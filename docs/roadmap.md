@@ -1,108 +1,143 @@
-# gatelane roadmap (5-6 week demo)
-
-> v0.1 (2026-08-30)
-> First demo target: looplane (in-house coding agent)
-> Day 0: 2026-08-30
-> Target ship: 2026-10-11 (week 6)
-
 ## Week 1-2: Shared engine
 
 ### Goal
 
-Stand up the engine that both red team mode and backtest mode share. Capture SDK is the most important deliverable — it must be **1 line of integration** for the in-house looplane agent to work.
+Stand up the capture SDK + Worker ingestion + promotion primitive. The capture
+SDK is the foundation for all three dataset sources — without it, no replay,
+no backtest, no red team.
 
-### Deliverables
+### Deliverables (as of W1 done — 2026-08-30)
 
 ```text
-packages/engine/
+packages/gatelane-sdk/                     # @lanefoundry/gatelane-sdk (TypeScript)
 ├── src/
-│   ├── capture.ts           — capture SDK (1-line integration)
-│   ├── dataset.ts            — dataset abstraction (freeze prod slice)
-│   ├── replay.ts             — replay engine (re-execute on new model)
-│   ├── compare.ts            — compare (new vs baseline)
-│   ├── audit-log.ts          — audit log writer
-│   └── promotion.ts          — promotion primitive (signed report)
-├── schema/
-│   └── d1.sql                — D1 schema (captures, datasets, replay_runs, promotions, audit_log)
-└── tests/
-    └── unit/
+│   ├── capture.ts          — capture() / withCapture() / getStorage()
+│   ├── candidate.ts        — 10 candidate types + parseCandidateRef + sha
+│   ├── dataset.ts          — freezeDataset() / FrozenDataset
+│   ├── gate.ts             — runGate() stub (returns mock PromotionReport)
+│   ├── promotion.ts        — PromotionPolicy, JudgeStabilityMatrix,
+│   │                         PromotionReport, PromotionDecision, DEFAULT_POLICY
+│   ├── storage.ts          — StorageAdapter + InMemoryStorage + setStorage
+│   ├── storage-fs.ts       — FilesystemStorage (local dev)
+│   ├── storage-http.ts     — HttpStorage (production: Worker /v1/capture)
+│   └── index.ts
 
-apps/worker/
+packages/gatelane-sdk-py/                  # gatelane-sdk (Python, for looplane)
+├── src/gatelane_sdk/
+│   ├── capture.py          — async context manager
+│   ├── client.py           — GatelaneClient (HTTP) + InMemoryClient
+│   └── types.py            — CaptureInput, CaptureMetadata, CaptureRecord
+└── tests/
+
+apps/worker/                                # @lanefoundry/gatelane-worker
 ├── src/
-│   ├── capture-endpoint.ts   — POST /v1/capture (calls capture SDK)
-│   ├── replay-api.ts         — POST /v1/replay (re-execute dataset)
-│   └── worker.ts             — Hono app entry
-└── wrangler.toml             — Cloudflare Worker config
+│   ├── worker.ts           — Hono app: /v1/health, /v1/capture, /v1/captures
+│   ├── storage.ts          — WorkerR2D1Storage (R2 raw + D1 metadata)
+│   └── fakes.ts            — In-memory R2/D1 fakes for tests
+├── tests/worker.test.ts    — 6 worker tests (auth, write, list, round-trip)
+├── migrations/0001_init.sql — D1 schema: capture_records, datasets,
+│                               promotion_reports, audit_log
+└── wrangler.toml            # TODO W2: bindings + env vars
 ```
 
 ### Acceptance
 
-- [ ] Capture SDK: 1 line integrates into looplane (Python and TS)
-- [ ] Replay engine: same dataset can be replayed against multiple model versions
-- [ ] Compare: Δ vs baseline computed, signed promotion report generated
-- [ ] Audit log: every capture / replay / promotion event recorded
-- [ ] D1 schema deployed, all tables created
+- [x] Capture SDK (TypeScript): one line, pluggable storage, fire-and-await error tolerance
+- [x] Capture SDK (Python): async context manager, `configure()` + `set_client(InMemoryClient())`
+- [x] Worker endpoint: POST /v1/capture, GET /v1/captures/:id, GET /v1/captures
+- [x] Worker storage: R2 holds raw JSON, D1 holds queryable metadata
+- [x] Bearer auth on all /v1 routes except /v1/health
+- [x] HTTP retry policy: 5xx + network → exponential backoff; 4xx → fail fast
+- [x] FilesystemStorage for local dev (no Cloudflare required)
+- [x] D1 schema migrations for capture_records / datasets / promotion_reports / audit_log
+- [x] Tests: 47 vitest tests pass (SDK + worker + engine) + 6 Python tests pass (pytest), including real HTTP round-trip
+- [x] Replay engine: same dataset replayed against multiple model versions (W2 — engine.ts)
+- [x] Compare: Δ vs baseline, judge stability matrix (W2 — compare.ts)
+- [x] Promotion primitive: real judge call + signed PromotionReport (W2 — runner.ts + sign.ts)
+- [ ] Audit log: every capture / replay / promotion event recorded with SHA provenance (deferred — W3+)
+- [x] PromotionPolicy evaluator: Δ threshold, judge stability rule, cost/latency ceiling, auto-rollback rule (W2 — evaluate.ts)
+- [ ] Miniflare local dev (`wrangler dev`) — deploy-phase, not blocking W1 tests
 
-## Week 3-4: Mode A — red team
+### How to verify locally
+
+```bash
+# TS SDK + worker + CLI
+pnpm install
+pnpm typecheck          # 0 errors
+pnpm test               # 30 passing
+
+# Python SDK
+cd packages/gatelane-sdk-py
+PYTHONPATH=src python3 -m pytest tests/   # 6 passing
+
+# CLI binary smoke
+node packages/cli/dist/cli.js --help
+node packages/cli/dist/cli.js gate \
+  --candidate model:gpt-5 \
+  --candidate guardrail:input-filter-v2 \
+  --judges gpt-4o,claude-sonnet \
+  --dataset-source redteam
+```
+
+## Week 1.5 (engine): Real replay, judge, sign
 
 ### Goal
 
-Run 50+ prompt injection attacks on 4 coding agents head-to-head. Produce attack report + structured patch recommendations.
+Replace the gate stub with the real engine: replay each (candidate, item), judge with M judges, compute the judge stability matrix, sign the PromotionReport with HMAC-SHA256, and evaluate PromotionPolicy into `promote | rollback | hold_for_review`.
 
-### Deliverables
+### Deliverables (as of W2 done — 2026-08-30)
 
 ```text
-packages/mode-red-team/
+packages/gatelane-engine/                    # @lanefoundry/gatelane-engine (server-side)
 ├── src/
-│   ├── attack-library/
-│   │   ├── direct-prompt-injection.ts
-│   │   ├── indirect-via-tool.ts
-│   │   ├── chain-attack.ts
-│   │   ├── context-window-flood.ts
-│   │   ├── memory-poisoning.ts
-│   │   ├── tool-abuse.ts
-│   │   └── ...                — 50+ attack vectors
-│   ├── orchestrators/
-│   │   ├── garak-runner.ts    — wrap NVIDIA garak
-│   │   ├── pyrit-runner.ts    — wrap Microsoft PyRIT
-│   │   └── promptfoo-runner.ts — wrap Promptfoo
-│   ├── targets/
-│   │   ├── claude-code.ts
-│   │   ├── codex-cli.ts
-│   │   ├── looplane.ts        — in-house (priority)
-│   │   └── opencode.ts
-│   ├── report.ts              — attack report generator
-│   └── patch-advisor.ts       — structured patch recommendations
-└── tests/
-    └── integration/
+│   ├── llm.ts                 — LLMCaller interface + MockLLMCaller (deterministic)
+│   ├── replay.ts              — replay engine with seeded determinism_score
+│   ├── judge.ts               — LLMJudge (verdict parser) + aggregateJudgments
+│   ├── compare.ts             — per-candidate metrics + JudgeStabilityMatrix
+│   ├── sign.ts                — HMAC-SHA256 sign + verify with canonical JSON
+│   ├── evaluate.ts            — PromotionPolicy evaluator → PromotionDecision
+│   ├── runner.ts              — createRunner(): orchestrates the whole pipeline
+│   └── index.ts               — barrel
+└── tests/engine.test.ts        — 17 tests
 ```
 
 ### Acceptance
 
-- [ ] 50+ attack vectors loaded and runnable
-- [ ] 4 coding agents integrated as targets
-- [ ] Head-to-head report: which agent has which vulnerabilities
-- [ ] Each successful attack produces: payload, agent response, evidence, structured patch recommendation
-- [ ] First report: **gatelane head-to-head coding agent attack report (4 agents × 50+ attacks)**
+- [x] LLMCaller interface + Mock impl (deterministic, seeded, includes toCapturedCall)
+- [x] Replay engine: each (candidate, item) → LLMResponse, with seeded determinism
+- [x] Judge: parses JSON verdict or falls back to quality heuristic
+- [x] Compare: per-candidate mean_score / pass_rate / cost / latency + Δ vs baseline
+- [x] JudgeStabilityMatrix: per-judge winner + consensus_winners via threshold
+- [x] HMAC-SHA256 signing with canonical (recursively sorted) JSON
+- [x] verifyReport rejects tampered reports and wrong keys
+- [x] PromotionPolicy evaluator: min_delta + judge_stability + cost_ceiling + latency_ceiling → promote / rollback / hold_for_review
+- [x] SDK `setGateRunner(...)` wires the engine; SDK without runner still produces a deterministic stub
+- [x] Tests: 17 engine tests + 30 SDK/worker tests = 47 vitest passing
+- [ ] Real OpenAI / Anthropic LLMCaller impls (W2.5 or W4) — only MockLLMCaller today
+- [ ] AuditLogEntry signing — currently `AuditLogEntry` records events but they're not signed
+- [ ] OTel span emission for `gate.replay` / `gate.compare` / `gate.promote` — span_kind field exists but no exporter wired
 
-## Week 5-6: Mode B — backtest + promotion gate
+## Week 3-4: Red-team dataset source
+
+### Goal
+Run 50+ prompt injection attacks on 4 coding agents head-to-head. Produce attack report + structured patch recommendations. Use the gate's red-team dataset source to find vulnerabilities and to verify a patch holds against the same dataset.
+## Week 5-6: Production-slice dataset source + end-to-end demo
 
 ### Goal
 
-Replay production traffic through new model / new prompt. Compute Δ. Auto-promote or auto-rollback based on threshold.
-
+Replay production traffic through new model / new prompt / new skill / new tool. Compute Δ against baseline. Run the full end-to-end demo: red-team gate finds vulnerabilities → patch → same gate verifies patch holds against the original red-team dataset → production-slice gate promotes the patched version.
 ### Deliverables
 
 ```text
-packages/mode-backtest/
+packages/source-prod-slice/
 ├── src/
-│   ├── freeze-slice.ts       — freeze prod traffic into immutable dataset
-│   ├── replay-batch.ts        — replay dataset against candidate model
-│   ├── compare-scores.ts      — compute Δ vs baseline
-│   ├── promotion-decision.ts  — apply threshold + canary logic
-│   ├── signed-report.ts       — generate signed promotion report (trace IDs, model SHA, judge SHA, approver)
+│   ├── freeze-slice.ts       — freeze prod traffic into immutable content-addressed FrozenDataset
+│   ├── replay-batch.ts        — replay dataset against candidate model (idempotent, seeded)
+│   ├── compare-scores.ts      — compute Δ vs baseline + judge stability matrix
+│   ├── promotion-decision.ts  — apply PromotionPolicy rules
+│   ├── signed-report.ts       — generate signed PromotionReport (trace IDs, candidate SHAs across model+prompt+skill+tool+config+..., judge SHAs, approver)
 │   ├── canary-orchestrator.ts — 10% canary → 24h observe → promote 100% or rollback
-│   └── audit-export.ts        — export promotion record (compliance)
+│   └── audit-export.ts        — export PromotionReport (compliance)
 └── tests/
     └── e2e/
 
@@ -118,17 +153,15 @@ apps/dashboard/
 └── package.json
 ```
 
-### Acceptance
-
-- [ ] Freeze-slice: production traffic → immutable dataset
-- [ ] Replay-batch: candidate model vs baseline on the same dataset
-- [ ] Compare-scores: Δ computed across score / cost / latency / regression
-- [ ] Promotion-decision: threshold rules, signed report
+- [ ] Freeze-slice: production traffic → immutable content-addressed `FrozenDataset`
+- [ ] Replay-batch: candidate model + judge stack against baseline on the same dataset
+- [ ] Compare-scores: Δ computed across score / cost / latency + judge stability matrix
+- [ ] Promotion-decision: PromotionPolicy rules applied, signed PromotionReport
 - [ ] Canary-orchestrator: 10% canary, 24h observe, auto-promote or auto-rollback
-- [ ] First promotion report: **gatelane validates looplane's own patch via Mode B**
+- [ ] CI/CD adapter (GitHub Actions): consumes PromotionDecision, routes or rolls back, logs reason
+- [ ] First promotion report: **gatelane validates looplane's own patch via the same gate** (red-team re-run + prod-slice promote)
 
 ## Cross-cutting (all 6 weeks)
-
 - CI: vitest unit + integration, GitHub Actions
 - D1 migrations: one per table, deployed via wrangler
 - Observability: traces (Cloudflare Workers Logs + Logpush)

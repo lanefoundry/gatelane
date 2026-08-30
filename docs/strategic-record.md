@@ -1,6 +1,6 @@
 # Strategic record (2026-08-30)
 
-> v1.0 (2026-08-30)
+> v1.1 (2026-08-30)
 > This document records the strategic decision chain that led to gatelane. For positioning and roadmap, see `positioning.md` and `roadmap.md`.
 
 ## 1. Starting point: Agent Platform as Workflow Control Plane
@@ -52,7 +52,7 @@ Every product has dataset + replay + compare. None of them connect compare to de
 
 `.research/2026-08-30-ai-agent-security-market.md` (46 KB) showed that the AI agent security market (Lakera→Check Point, Protect AI→PANW, CalypsoAI→F5, Prompt→SentinelOne, Aim→Cato, Apex→Tenable, SPLX→Zscaler) is also consolidating, with **coding-agent protection and MCP/non-human-identity governance** as the 2026-2027 wedge.
 
-**Conclusion**: combine red team mode (attack probes) + backtest mode (model upgrade probes) on a **shared engine**, with the **promotion gate** as the spine. This is gatelane.
+**Conclusion**: ship a single product — the **promotion gate** — that takes red-team attack payloads and production traces as pluggable dataset sources and produces a signed promotion decision. The promotion gate is the spine; red-team and backtest are dataset source variants, not separate products. This is gatelane.
 
 ## 5. Brand pivot: from Agent Platform to *-lane family
 
@@ -100,12 +100,13 @@ agent-platform (Workflow Control Plane, 7 specs, 8 commands)
 
 ## 8. What's preserved from agent-platform
 
-- **`evaluation-learning-loop` spec** → gatelane Mode B (backtest) draws on the conceptual structure
-- **`policy-runtime-controls` spec** → gatelane's patch advisor draws on the input/tool/output/budget guard structure
+- **`evaluation-learning-loop` spec** → gatelane's production-slice dataset source (backtest) draws on the conceptual structure of frozen, versioned eval cases
+- **`policy-runtime-controls` spec** → gatelane's PromotionPolicy evaluator draws on the input/tool/output/budget guard structure
 - **`provider-tool-routing` spec** → future v0.2 MCP/non-human-identity governance
-- **`observability-evidence-artifacts` spec** → gatelane's audit log architecture
+- **`observability-evidence-artifacts` spec** → gatelane's audit log + signed PromotionReport architecture
 - **D1 schema patterns** → gatelane's capture/dataset/replay/promotion tables follow the same pattern
 - **7 OpenSpec specs** → preserved in `agent-platform` repo as reference; not directly imported
+- **Framing pivot (2026-08-30)** → initial sketch used "Mode A (red team) + Mode B (backtest) dual engine" framing. Revised the same day to a single product — **Promotion Gate** with three pluggable dataset sources (red-team / production slice / compliance) — because the dual-mode framing read as "two products sharing infra" rather than one product. Promotion gate as a single verb (`promote(candidate, dataset, policy) → signed decision`) is a sharper market position; red-team payloads are a special case of "curated frozen dataset," not a separate mode.
 
 ## 9. References
 

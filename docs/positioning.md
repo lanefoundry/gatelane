@@ -1,14 +1,11 @@
 # gatelane positioning
 
-> v0.1 (2026-08-30)
+> v0.2 (2026-08-30)
 > For internal lanefoundry team alignment. Not a marketing doc.
+
 ## The wedge
 
 **The promotion-on-backtest-delta primitive.** The AI-era gate that closes the loop from "new model version" to "should I ship it."
-
-## What is a "promotion gate"?
-**The promotion-on-backtest-delta primitive.** The AI-era gate that closes the loop from "new model version" to "should I ship it."
-**The promotion-on-backtest-delta primitive.**
 
 ## What is a "promotion gate"?
 
@@ -26,7 +23,7 @@ In the AI agent era, the "version" being promoted is no longer just code — it 
 
 The AI-era promotion gate adds a new dimension: **the new version must perform at least as well as the current version on a frozen slice of production traffic, AND must not regress on known attack payloads**. This is the primitive that no existing product ships end-to-end.
 
-**The promotion-on-backtest-delta primitive.**
+## Why the wedge exists
 
 The 2025-2026 AI agent observability / eval market is consolidated:
 
@@ -53,19 +50,62 @@ What **every product documents** as "backtest" but **none of them turn into a pr
 
 **No product ships a CI/CD-native `if new-model beats baseline on frozen production slice by Δ ≥ X, route 100% of traffic; else auto-rollback` primitive.** That is the wedge.
 
+## One product, three dataset sources
+
+gatelane is one product. The verb is `promote(candidate, dataset, policy) → signed decision`. The dataset is pluggable — three source variants feed the same gate:
+
+- **Red-team dataset** — curated attacks mapped to OWASP Agentic Top 10 + MITRE ATLAS. Used to find vulnerabilities in a new agent and to verify a patch holds.
+- **Production slice** — frozen production traces captured by the agent's normal calls. Used to gate routine model / prompt upgrades.
+- **Compliance dataset** — curated cases mapped to NIST AI 600-1 + Taiwan AI Basic Act + EU AI Act + sectoral overlays. Used for CISO / regulator sign-off. (v2 scope.)
+
+The engine, capture SDK, audit log, and promotion primitive are shared infrastructure reused across all three sources. The source adapters are thin and pluggable. Switching dataset source is configuration, not an engine change.
+
 ## Why the AI agent security angle complements, not competes
 
 The AI agent security market is also active in 2025-2026 (see `docs/strategic-record.md` §7), but most players (Lakera, Mindgard, Noma, TrojAI, Pillar, Straiker, CyCraft) compete on **attack surface coverage** — how many attacks you can throw, how many frameworks you map to.
 
-gatelane's red team mode (Mode A) is **deliberately smaller** than these players' attack libraries. We're not trying to be the broadest red team. We're trying to be the **one tool that runs both red team and backtest from the same engine**, with **promotion gate as the spine**.
-
-The differentiator is not "we have more attack vectors" — it's "we close the loop":
-
 ```text
-attack payload → vulnerability found → patch → backtest on frozen prod slice → regression check → auto-canary
+attack payload → vulnerability found → patch
+                                       ↓
+                  same gate on same red-team dataset → verify patch holds
+                                                       ↓
+                                       gate on production slice → auto-canary
 ```
 
-Most security players stop at "vulnerability found." Most observability players stop at "regression check." gatelane closes both.
+Most security players stop at "vulnerability found." Most observability players stop at "regression check." gatelane closes both — under one promotion primitive.
+
+The engine, capture SDK, audit log, and promotion primitive are shared infrastructure reused across all three sources. The source adapters are thin and pluggable. Switching dataset source is configuration, not an engine change.
+
+## What the gate accepts as a candidate
+
+| Candidate type | Example ref | SHA captured in PromotionReport | Real-world attack it closes the gap for |
+|---|---|---|---|
+| Model | `model:gpt-5` | model registry SHA | (eval regressions, prompt injection in the model itself) |
+| Prompt template | `prompt:system-v2` | template content hash | (ASI01 direct injection bypasses) |
+| Skill version | `skill:citation-extractor@1.3.0` | skill package SHA | **ASI04** supply chain — version downgrade, prompt-template injection via skill registry |
+| Agent routing config | `config:agent-routing-experimental` | config file SHA | **ASI08** dispatcher bypass — corebreak, Flowise custom MCP command injection |
+| Tool / MCP server schema | `tool:mcp-server-foo@1.2.0` | tool schema hash | **ASI02** tool abuse — deadbugz MCP supply chain, Splunk MCP server toolkit RCE |
+| Eval dataset / scoring rubric | `eval:xinference-suite-v3` | eval suite SHA | Xinference eval-injection RCE — agent trusts eval output as instruction |
+| KB / RAG corpus | `kb:groundlane-corpus-q3` | corpus snapshot SHA | **LLM08** vector & embedding poisoning, llms.txt supply chain |
+| Memory backend | `memory:persistence-backend` | backend config + storage schema SHA | AI "mind virus" persistent memory propagation (2026-08-19) |
+| Dispatcher / orchestration rules | `dispatcher:corebreak-rules` | dispatcher rules SHA | Dispatch-layer bypass (corebreak 2026-08-17) |
+| Guardrail / input filter | `guardrail:input-filter-v2` | filter rules SHA | Claude Code Auto Mode module shadowing — guardrail allowed malicious action but blocked cleanup |
+
+Multiple candidates of different types can run in a single gate run. The PromotionReport carries the SHA of every candidate + judge, the dataset version, the policy, and the approver — so 6 months later the auditor can re-derive which versions of every component were promoted, against which dataset, judged by which models, and signed off by whom.
+
+## Compare-view vs promotion gate
+
+The gap between "every product has dataset + replay + compare" and "promotion gate" is exactly the gap between a **read** and a **write**. Existing products expose a comparison view (read). gatelane exposes a decision (write): `promote | rollback | hold_for_review`, signed, audit-logged, CI/CD-consumable.
+
+| Capability | Comparison view (existing products) | Promotion gate (gatelane) |
+|---|---|---|
+| Dataset | Yes | Yes |
+| Replay | Yes | Yes |
+| Compare | Yes | Yes |
+| Signed promotion report | No | Yes |
+| Auto-route / auto-rollback | No | Yes |
+| Audit-logged approver | No | Yes |
+| Reproducible 6 months later | Varies | Yes (full provenance) |
 
 ## Why we don't build a general LLM gateway
 
@@ -86,16 +126,16 @@ The 22+ credible AI gateway options already cover the routing / caching / pricin
 | MITRE ATLAS (v5.4.0) | Tactic-level coverage, key techniques |
 | OWASP LLM Top 10 (2026) | Full coverage |
 | NIST AI 600-1 | Coverage of 12 risk categories |
-| **Taiwan AI Basic Act (2025/12/23)** | **v2 scope** — compliance mode after v1 ships |
+| **Taiwan AI Basic Act (2025/12/23)** | **v2 scope** — compliance dataset source after v1 ships |
 
 ## Who buys
 
-| Buyer | What they need | What gatelane gives them |
+| Buyer | What they need | Dataset sources they reach for |
 |---|---|---|
-| **Security team at a company shipping agents** | "Are we exposed to known attack vectors? How do we know the patch worked?" | Mode A: red team report. Mode B: regression check. |
-| **ML / platform team at a company shipping LLM features** | "Can we ship a new model version without watching the comparison view all day?" | Mode B: promotion gate. |
-| **Coding agent team** | "What if my coding agent is hijacked via prompt injection? How do I know when I've fixed it?" | Mode A on coding-agent-specific attacks. Mode B to validate the fix. |
-| **CISO / compliance officer at a regulated company** | "Are we compliant with AI Basic Act / NIST AI 600-1?" | v2 scope — compliance mode built on the same engine. |
+| **Security team at a company shipping agents** | "Are we exposed to known attack vectors? How do we know the patch worked?" | Red-team dataset (find holes) → same gate (verify patch) |
+| **ML / platform team at a company shipping LLM features** | "Can we ship a new model version without watching the comparison view all day?" | Production slice |
+| **Coding agent team** | "What if my coding agent is hijacked via prompt injection? How do I know when I've fixed it?" | Red-team dataset (find) → same gate on same dataset (verify) |
+| **CISO / compliance officer at a regulated company** | "Are we compliant with AI Basic Act / NIST AI 600-1?" | Compliance dataset (v2) |
 
 ## What this is NOT
 
@@ -110,6 +150,7 @@ The 22+ credible AI gateway options already cover the routing / caching / pricin
 - Do we open-source from day 1, or wait until v0.1 demo ships? (lean: open-source from day 1 — the threat model is public knowledge anyway)
 - Do we charge for hosted mode, or only support self-host? (lean: only self-host in v0.1; revisit at v1.0)
 - What's the relationship with `groundlane` provenance? Could `gatelane` use `groundlane` provenance as one risk input? (likely yes for v0.2)
+- Does the compliance dataset source become its own SKU, or stay as a v2 toggle on the same gate? (current lean: v2 toggle — same product, configured regime.)
 
 ## References
 
