@@ -1,0 +1,73 @@
+{
+  "name": "@lanefoundry/gatelane-sdk",
+  "version": "0.0.1-dev",
+  "description": "Capture SDK + type-only shapes for the gatelane promotion gate.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "source": "./src/index.ts"
+    },
+    "./gate": {
+      "types": "./dist/gate.d.ts",
+      "import": "./dist/gate.js",
+      "source": "./src/gate.ts"
+    },
+    "./dataset": {
+      "types": "./dist/dataset.d.ts",
+      "import": "./dist/dataset.js",
+      "source": "./src/dataset.ts"
+    },
+    "./candidate": {
+      "types": "./dist/candidate.d.ts",
+      "import": "./dist/candidate.js",
+      "source": "./src/candidate.ts"
+    },
+    "./promotion": {
+      "types": "./dist/promotion.d.ts",
+      "import": "./dist/promotion.js",
+      "source": "./src/promotion.ts"
+    },
+    "./capture": {
+      "types": "./dist/capture.d.ts",
+      "import": "./dist/capture.js",
+      "source": "./src/capture.ts"
+    },
+    "./storage": {
+      "types": "./dist/storage.d.ts",
+      "import": "./dist/storage.js",
+      "source": "./src/storage.ts"
+    },
+    "./storage-fs": {
+      "types": "./dist/storage-fs.d.ts",
+      "import": "./dist/storage-fs.js",
+      "source": "./src/storage-fs.ts"
+    },
+    "./storage-http": {
+      "types": "./dist/storage-http.d.ts",
+      "import": "./dist/storage-http.js",
+      "source": "./src/storage-http.ts"
+    }
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      }
+    }
+  },
+  "files": ["dist", "src"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "vitest": "^2.0.5"
+  }
+}

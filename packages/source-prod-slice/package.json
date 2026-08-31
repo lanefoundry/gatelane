@@ -1,0 +1,56 @@
+{
+  "name": "@lanefoundry/source-prod-slice",
+  "version": "0.0.1-dev",
+  "description": "Production slice tooling — freeze, replay, compare, promote, audit.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./freeze-slice": {
+      "types": "./dist/freeze-slice.d.ts",
+      "import": "./dist/freeze-slice.js"
+    },
+    "./replay-batch": {
+      "types": "./dist/replay-batch.d.ts",
+      "import": "./dist/replay-batch.js"
+    },
+    "./compare-scores": {
+      "types": "./dist/compare-scores.d.ts",
+      "import": "./dist/compare-scores.js"
+    },
+    "./promotion-decision": {
+      "types": "./dist/promotion-decision.d.ts",
+      "import": "./dist/promotion-decision.js"
+    },
+    "./signed-report": {
+      "types": "./dist/signed-report.d.ts",
+      "import": "./dist/signed-report.js"
+    },
+    "./canary-orchestrator": {
+      "types": "./dist/canary-orchestrator.d.ts",
+      "import": "./dist/canary-orchestrator.js"
+    },
+    "./audit-export": {
+      "types": "./dist/audit-export.d.ts",
+      "import": "./dist/audit-export.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@lanefoundry/gatelane-sdk": "workspace:*",
+    "@lanefoundry/gatelane-engine": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "vitest": "^2.0.5"
+  }
+}

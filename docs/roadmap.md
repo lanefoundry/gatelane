@@ -120,12 +120,28 @@ packages/gatelane-engine/                    # @lanefoundry/gatelane-engine (ser
 ## Week 3-4: Red-team dataset source
 
 ### Goal
-Run 50+ prompt injection attacks on 4 coding agents head-to-head. Produce attack report + structured patch recommendations. Use the gate's red-team dataset source to find vulnerabilities and to verify a patch holds against the same dataset.
+
+Run 20 prompt injection attacks (pinj-001..pinj-005, pesc-001..pesc-005, cinj-001..cinj-005, tmis-001..tmis-005) on coding-agent candidates via `runGate({dataset: freezeInjectionDataset()})`. Produce per-candidate judgment matrix, JudgeStabilityMatrix, and an attack report highlighting vulnerabilities. Verify a patch holds against the same dataset (patch‑verify cycle).
+
+### Deliverables
+
+```text
+packages/gatelane-engine/
+├── src/
+│   ├── attack.ts            — 20 hand-curated injection payloads + freezeInjectionDataset()
+│   └── redteam.ts           — AttackReport + buildAttackReport + verifyPatchHolds
+└── tests/attack.test.ts     — red-team dataset + attack report + patch-verify tests
+```
+
+### Acceptance
+
+- [x] freezeInjectionDataset(): 20 payloads, source_kind=redteam, content-addressed via SDK freezeDataset
+- [x] Each payload mapped to OWASP Agentic Top 10 (ASI01/02/03/05)
+- [x] buildAttackReport(): per-candidate survival rate + vulnerabilities + per-ASI gaps
+- [x] verifyPatchHolds(): resolved / regressed / holds semantics
+- [x] Tests: attack.test.ts (dataset + report + patch-verify)
+
 ## Week 5-6: Production-slice dataset source + end-to-end demo
-
-### Goal
-
-Replay production traffic through new model / new prompt / new skill / new tool. Compute Δ against baseline. Run the full end-to-end demo: red-team gate finds vulnerabilities → patch → same gate verifies patch holds against the original red-team dataset → production-slice gate promotes the patched version.
 ### Deliverables
 
 ```text

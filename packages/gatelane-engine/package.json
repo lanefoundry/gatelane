@@ -1,0 +1,77 @@
+{
+  "name": "@lanefoundry/gatelane-engine",
+  "version": "0.0.2-dev",
+  "description": "Gate engine — replay, compare, judge, sign. Runs in the Worker.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./attack": {
+      "types": "./dist/attack.d.ts",
+      "import": "./dist/attack.js"
+    },
+    "./redteam": {
+      "types": "./dist/redteam.d.ts",
+      "import": "./dist/redteam.js"
+    },
+    "./llm": {
+      "types": "./dist/llm.d.ts",
+      "import": "./dist/llm.js"
+    },
+    "./replay": {
+      "types": "./dist/replay.d.ts",
+      "import": "./dist/replay.js"
+    },
+    "./judge": {
+      "types": "./dist/judge.d.ts",
+      "import": "./dist/judge.js"
+    },
+    "./compare": {
+      "types": "./dist/compare.d.ts",
+      "import": "./dist/compare.js"
+    },
+    "./sign": {
+      "types": "./dist/sign.d.ts",
+      "import": "./dist/sign.js"
+    },
+    "./evaluate": {
+      "types": "./dist/evaluate.d.ts",
+      "import": "./dist/evaluate.js"
+    },
+    "./runner": {
+      "types": "./dist/runner.d.ts",
+      "import": "./dist/runner.js"
+    },
+    "./audit": {
+      "types": "./dist/audit.d.ts",
+      "import": "./dist/audit.js"
+    },
+    "./tracing": {
+      "types": "./dist/tracing.d.ts",
+      "import": "./dist/tracing.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@lanefoundry/gatelane-sdk": "workspace:*",
+    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/exporter-collector-grpc": "^0.25.0",
+    "@opentelemetry/exporter-trace-otlp-grpc": "^0.221.0",
+    "@opentelemetry/resources": "^2.10.0",
+    "@opentelemetry/sdk-trace-base": "^2.10.0",
+    "@opentelemetry/sdk-trace-node": "^2.10.0",
+    "@opentelemetry/semantic-conventions": "^1.43.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "vitest": "^2.0.5"
+  }
+}

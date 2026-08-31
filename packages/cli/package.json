@@ -1,0 +1,21 @@
+{
+  "name": "@lanefoundry/gatelane-cli",
+  "version": "0.0.1-dev",
+  "description": "CLI for the gatelane promotion gate.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "bin": {
+    "gatelane": "./dist/cli.js"
+  },
+  "main": "./dist/cli.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@lanefoundry/gatelane-sdk": "workspace:*",
+    "@lanefoundry/gatelane-engine": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4"
+  }
+}

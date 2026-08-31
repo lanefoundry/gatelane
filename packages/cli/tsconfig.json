@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "dist",
+    "rootDir": "src",
+    "baseUrl": ".",
+    "paths": {
+      "@lanefoundry/gatelane-sdk": ["../gatelane-sdk/dist/index.d.ts"],
+      "@lanefoundry/gatelane-sdk/*": ["../gatelane-sdk/dist/*"],
+      "@lanefoundry/gatelane-engine": ["../gatelane-engine/dist/index.d.ts"],
+      "@lanefoundry/gatelane-engine/*": ["../gatelane-engine/dist/*"]
+    },
+    "skipLibCheck": true
+  },
+  "include": ["src/**/*"],
+  "exclude": ["../gatelane-sdk/**"]
+}
