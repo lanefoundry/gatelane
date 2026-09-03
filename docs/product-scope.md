@@ -1,7 +1,7 @@
 # gatelane product scope
 
-> v0.2 (2026-09-03)
-> Records the product scope expansion from "red team + backtest" to "red team + blue team + eval" with Langfuse-grade tracing in the shared engine. Supersedes the two-mode (Mode A / Mode B) framing used in earlier docs.
+> v0.3 (2026-09-03)
+> Records the product scope expansion from "red team + backtest" to "red team + blue team + eval" with Langfuse-grade tracing in the shared engine. Adds DeepEval and Promptfoo feature alignment. Supersedes the two-mode (Mode A / Mode B) framing used in earlier docs.
 
 ## Overview
 
@@ -167,7 +167,88 @@ packages/engine/
 
 ---
 
-## 3. Package structure
+## 3. Eval framework alignment
+
+The eval pillar and shared engine draw from three external frameworks. Langfuse alignment is covered in section 2. This section maps gatelane's eval and red team capabilities against DeepEval and Promptfoo.
+
+### 3.1 DeepEval alignment
+
+DeepEval provides 50+ evaluation metrics, agent trajectory testing, and an `@observe` tracing decorator. gatelane's eval pillar targets feature parity with DeepEval's metric categories while adding production-grade tracing and cross-pillar workflows.
+
+#### Metric coverage mapping
+
+| DeepEval metric category | DeepEval metrics | gatelane equivalent | Pillar |
+|---|---|---|---|
+| **Custom (LLM-as-judge)** | G-Eval, DAG, Conversational G-Eval/DAG | Custom metrics (user-defined judge functions) | Eval |
+| **AI Agent — trajectory** | Task Completion, Step Efficiency, Plan Adherence, Plan Quality | Multi-turn scenario testing (full agent behavior chain) | Eval |
+| **AI Agent — component** | Tool Correctness, Argument Correctness | Assertion-based testing (`expect(toolCalls)...`) + tool call tracing (as spans) | Eval + Engine |
+| **RAG** | Contextual Relevancy, Contextual Precision, Contextual Recall, Answer Relevancy, Faithfulness | Faithfulness, Relevance scoring metrics | Eval |
+| **Multi-turn** | Knowledge Retention, Role Adherence, Conversation Completeness, Conversation Relevancy | Multi-turn scenario testing with per-turn scoring | Eval |
+| **Safety** | Bias, Toxicity, Non-Advice, Misuse, PII Leakage, Role Violation | Safety scoring + red team attack probes (50+ vectors) | Eval + Red team |
+| **Image** | Image metrics | v2 scope | — |
+| **Others** | Hallucination, JSON Correctness, Summarization | Hallucination detection, Format compliance | Eval |
+
+#### Feature mapping
+
+| DeepEval feature | gatelane equivalent | Notes |
+|---|---|---|
+| `@observe` decorator (tracing) | Shared engine tracing (Langfuse-grade) | gatelane's tracing is in the engine, available to all pillars |
+| `EvaluationDataset` + Golden test cases | Dataset management (freeze-slice from traces) | gatelane adds production traffic → test case generation |
+| TypeScript SDK (Vitest integration) | `@gatelane/mode-eval` TypeScript package | Native TypeScript; no Python dependency |
+| Python SDK (Pytest integration) | Out of scope (v1) | gatelane is TypeScript-first (Cloudflare Workers) |
+| DeepTeam (red teaming) | `@gatelane/mode-red-team` (separate pillar) | gatelane separates red team as its own pillar with 50+ vectors |
+| Confident AI platform (hosted dashboard) | Self-hosted dashboard (React + Vite) | gatelane runs on user's Cloudflare account |
+| LangChain / LangGraph / OpenAI integrations | Provider-agnostic via engine tracing | Wrap any provider; trace as Generation spans |
+
+### 3.2 Promptfoo alignment
+
+Promptfoo provides deterministic and model-assisted assertions, red teaming, YAML-driven configuration, and CI/CD integration. gatelane's eval and red team pillars target feature parity with Promptfoo's assertion system while adding production observability and promotion gates.
+
+#### Assertion coverage mapping
+
+| Promptfoo assertion category | Promptfoo assertions | gatelane equivalent | Pillar |
+|---|---|---|---|
+| **Deterministic — exact** | equals, contains, regex, starts-with, icontains | Assertion-based testing | Eval |
+| **Deterministic — format** | is-json, is-sql, is-xml, is-valid-openai-tools-call | Format compliance scoring | Eval |
+| **Deterministic — safety** | is-refusal | Safety scoring + red team probes | Eval + Red team |
+| **Deterministic — NLP** | rouge-n, bleu, gleu, levenshtein, meteor | NLP metrics (target) | Eval |
+| **Deterministic — operational** | latency, cost, perplexity | Traced via engine Generation spans (latency, token counts, cost) | Engine |
+| **Deterministic — agent** | tool-used, tool-args-match, tool-sequence, step-count | Assertion-based testing on traced tool call spans | Eval + Engine |
+| **Deterministic — guardrails** | guardrails (custom validation functions) | Custom metrics (user-defined judge functions) | Eval |
+| **Model-assisted — quality** | similar, llm-rubric, g-eval, answer-relevance, factuality, select-best | Correctness, Faithfulness, Relevance scoring | Eval |
+| **Model-assisted — RAG** | context-faithfulness, context-recall, context-relevance | Faithfulness, Relevance scoring | Eval |
+| **Model-assisted — conversation** | conversation-relevance | Multi-turn scenario testing with per-turn scoring | Eval |
+| **Model-assisted — agent** | trajectory:goal-success | Multi-turn scenario testing (task completion) | Eval |
+| **Model-assisted — moderation** | classifier, moderation | Safety scoring, Toxicity | Eval |
+
+#### Feature mapping
+
+| Promptfoo feature | gatelane equivalent | Notes |
+|---|---|---|
+| YAML config (`promptfooconfig.yaml`) | Programmatic TypeScript API | gatelane is code-first; YAML config is v2 scope |
+| Matrix comparison view | Pairwise comparison + dashboard | Compare Model A vs Model B on same inputs |
+| Red teaming (prompt injection, jailbreaking, PII, tool vuln, data exfiltration) | `@gatelane/mode-red-team` (50+ vectors, 6 categories) | gatelane's red team is a dedicated pillar, not a sub-feature |
+| CI/CD GitHub Action | CI/CD integration (PR trigger, merge gate) | gatelane adds promotion gate with signed provenance |
+| 50+ LLM providers | Provider-agnostic via engine tracing | Any provider that accepts prompt/completion |
+| Caching + concurrency | Engine-level caching + Cloudflare Workers concurrency | Leverages edge runtime |
+| Custom providers | Custom metrics (judge functions) | User-defined evaluation logic |
+
+### 3.3 Differentiation: what gatelane adds
+
+These capabilities are not present in DeepEval, Promptfoo, or Langfuse individually:
+
+| Capability | Description | Why it matters |
+|---|---|---|
+| **Three-pillar integration** | Red team + blue team + eval on one shared engine | No context switching between attack testing, production defense, and quality eval |
+| **Production → eval pipeline** | Freeze production traffic slice → generate eval dataset → run scenario tests → promote or rollback | Closes the loop between production data and quality gates |
+| **Promotion gate with provenance** | If `Δ ≥ threshold`, auto-promote; else auto-rollback. Signed report with full trace provenance | Auditable, automated deployment decisions |
+| **Anomaly detection on traced data** | Detect quality degradation, behavioral drift, cost spikes from production traces | Proactive defense, not just reactive testing |
+| **Cross-pillar regression verification** | After red team finding → patch → eval test → blue team production verify | End-to-end vulnerability lifecycle |
+| **Edge-native (Cloudflare Workers)** | Entire stack runs on user's Cloudflare account | No data leaves user's infrastructure; D1 + R2 storage |
+
+---
+
+## 4. Package structure
 
 ```
 gatelane/
@@ -184,7 +265,7 @@ gatelane/
   └── tests/
 ```
 
-### npm package names
+### 4.1 npm package names
 
 | Package | npm name | Description |
 |---|---|---|
@@ -196,7 +277,7 @@ gatelane/
 
 ---
 
-## 4. Naming changes
+## 5. Naming changes
 
 ### Removed: Mode A / Mode B
 
@@ -221,7 +302,7 @@ The `mode-backtest` package is renamed to `mode-blue-team`. Backtest remains a c
 
 ---
 
-## 5. Relationship between pillars
+## 6. Relationship between pillars
 
 ```
                           ┌─────────────────────┐
@@ -259,7 +340,7 @@ The `mode-backtest` package is renamed to `mode-blue-team`. Backtest remains a c
 
 ---
 
-## 6. Threat model coverage by pillar
+## 7. Threat model coverage by pillar
 
 | Framework | Red team | Blue team | Eval |
 |---|---|---|---|
@@ -271,7 +352,7 @@ The `mode-backtest` package is renamed to `mode-blue-team`. Backtest remains a c
 
 ---
 
-## 7. Implementation status and plan
+## 8. Implementation status and plan
 
 | Item | Status | Pillar |
 |---|---|---|
@@ -317,3 +398,4 @@ The `mode-backtest` package is renamed to `mode-blue-team`. Backtest remains a c
 - `docs/roadmap.md` — demo plan (to be updated)
 - [Langfuse docs](https://langfuse.com/docs) — tracing model reference
 - [DeepEval docs](https://docs.confident-ai.com/) — eval framework reference
+- [Promptfoo docs](https://www.promptfoo.dev/docs/) — assertion + red teaming framework reference
