@@ -273,7 +273,7 @@ gatelane/
 
 - [Why gatelane](docs/positioning.md) — the promotion-on-backtest-delta wedge
 - [Roadmap](docs/roadmap.md) — 5–6 week demo target, v0.2 and v1.0 plans
-- [Strategic record](docs/strategic-record.md) — why we pivoted from Agent Platform Workflow Control Plane
+- [Strategic record](docs/strategic-record.md) — why we pivoted from Agent Platform
 - *Threat model* (planned, week 2)
 - *Attack library design* (planned, week 3)
 
@@ -282,12 +282,19 @@ gatelane/
 | Item | Status |
 |---|---|
 | Repo + README + positioning | ✅ done (2026-08-30) |
-| Capture SDK (1-line integration) | 🟡 in design |
-| Shared engine (dataset / replay / compare) | 🟡 in design |
-| Mode A (red team, 50+ attacks) | 🟡 planned (week 3-4) |
-| Mode B (backtest, promotion gate) | 🟡 planned (week 5-6) |
-| First demo target: looplane vulnerability report | ⏳ pending |
-| First promotion report: gatelane validates looplane's own patch | ⏳ pending |
+| Project scaffolding (package.json, pnpm-workspace, wrangler.toml, .env.example, CI) | ✅ done (2026-09-03) |
+| D1 schema / migrations | ✅ done (2026-09-03) |
+| Capture SDK (1-line integration) | ✅ done (2026-09-03) |
+| Shared engine (dataset / replay / compare / audit-log / promotion) | ✅ done (2026-09-03) |
+| Worker API (capture endpoint + replay API) | ✅ done (2026-09-03) |
+| Mode A (red team, 50+ attacks) | ✅ done (2026-09-03) — 6 categories, 50+ vectors, runner, report |
+| Mode B (backtest, promotion gate) | ✅ done (2026-09-03) |
+| Dashboard (attack report + promotion report UI) | ✅ done (2026-09-03) — 6 pages, hash router, TanStack Query |
+| Docs: threat-model.md | ✅ done (2026-09-03) |
+| Docs: attack-library.md | ✅ done (2026-09-03) |
+| Docs: architecture.md | ✅ done (2026-09-03) |
+| First demo target: looplane vulnerability report | ❌ not started |
+| First promotion report: gatelane validates looplane's own patch | ❌ not started |
 | v0.1 demo ship | 🎯 target: 2026-10-11 |
 
 ## What this is NOT

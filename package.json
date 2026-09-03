@@ -1,0 +1,31 @@
+{
+  "name": "gatelane",
+  "version": "0.0.0-dev",
+  "private": true,
+  "description": "Pre-production safety + eval gate for AI agents",
+  "license": "Apache-2.0",
+  "scripts": {
+    "dev": "pnpm --filter @gatelane/worker dev",
+    "build": "pnpm -r build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc -b",
+    "deploy": "pnpm --filter @gatelane/worker deploy",
+    "secrets:status": "pnpm --filter @gatelane/worker exec wrangler secret list",
+    "secrets:setup": "pnpm --filter @gatelane/worker exec wrangler secret bulk .env"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250408.0",
+    "@eslint/js": "^9.39.5",
+    "eslint": "^9.9.0",
+    "prettier": "^3.3.0",
+    "typescript": "^5.5.0",
+    "typescript-eslint": "^8.69.0",
+    "vitest": "^2.0.0",
+    "wrangler": "^3.70.0"
+  }
+}
