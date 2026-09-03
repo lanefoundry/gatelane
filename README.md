@@ -289,7 +289,7 @@ gatelane/
 | Worker API (capture endpoint + replay API) | ✅ done (2026-09-03) |
 | Mode A (red team, 50+ attacks) | ✅ done (2026-09-03) — 6 categories, 50+ vectors, runner, report |
 | Mode B (backtest, promotion gate) | ✅ done (2026-09-03) |
-| Dashboard (attack report + promotion report UI) | 🟡 scaffolded, UI not started |
+| Dashboard (attack report + promotion report UI) | ✅ done (2026-09-03) — 6 pages, hash router, TanStack Query |
 | Docs: threat-model.md | ✅ done (2026-09-03) |
 | Docs: attack-library.md | ✅ done (2026-09-03) |
 | Docs: architecture.md | ✅ done (2026-09-03) |
