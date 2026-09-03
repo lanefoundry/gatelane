@@ -282,12 +282,19 @@ gatelane/
 | Item | Status |
 |---|---|
 | Repo + README + positioning | ✅ done (2026-08-30) |
-| Capture SDK (1-line integration) | 🟡 in design |
-| Shared engine (dataset / replay / compare) | 🟡 in design |
-| Mode A (red team, 50+ attacks) | 🟡 planned (week 3-4) |
-| Mode B (backtest, promotion gate) | 🟡 planned (week 5-6) |
-| First demo target: looplane vulnerability report | ⏳ pending |
-| First promotion report: gatelane validates looplane's own patch | ⏳ pending |
+| Project scaffolding (package.json, pnpm-workspace, wrangler.toml, .env.example, CI) | ❌ not started |
+| D1 schema / migrations | ❌ not started |
+| Capture SDK (1-line integration) | ❌ not started |
+| Shared engine (dataset / replay / compare / audit-log / promotion) | ❌ not started |
+| Worker API (capture endpoint + replay API) | ❌ not started |
+| Mode A (red team, 50+ attacks) | ❌ not started |
+| Mode B (backtest, promotion gate) | ❌ not started |
+| Dashboard (attack report + promotion report UI) | ❌ not started |
+| Docs: threat-model.md | ❌ not started |
+| Docs: attack-library.md | ❌ not started |
+| Docs: architecture.md | ❌ not started |
+| First demo target: looplane vulnerability report | ❌ not started |
+| First promotion report: gatelane validates looplane's own patch | ❌ not started |
 | v0.1 demo ship | 🎯 target: 2026-10-11 |
 
 ## What this is NOT
