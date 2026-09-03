@@ -19,7 +19,7 @@
     "secrets:setup": "pnpm --filter @gatelane/worker exec wrangler secret bulk .env"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20260801.0",
+    "@cloudflare/workers-types": "^4.20250408.0",
     "eslint": "^9.9.0",
     "prettier": "^3.3.0",
     "typescript": "^5.5.0",
