@@ -282,14 +282,14 @@ gatelane/
 | Item | Status |
 |---|---|
 | Repo + README + positioning | ✅ done (2026-08-30) |
-| Project scaffolding (package.json, pnpm-workspace, wrangler.toml, .env.example, CI) | ❌ not started |
-| D1 schema / migrations | ❌ not started |
-| Capture SDK (1-line integration) | ❌ not started |
-| Shared engine (dataset / replay / compare / audit-log / promotion) | ❌ not started |
-| Worker API (capture endpoint + replay API) | ❌ not started |
-| Mode A (red team, 50+ attacks) | ❌ not started |
-| Mode B (backtest, promotion gate) | ❌ not started |
-| Dashboard (attack report + promotion report UI) | ❌ not started |
+| Project scaffolding (package.json, pnpm-workspace, wrangler.toml, .env.example, CI) | ✅ done (2026-09-03) |
+| D1 schema / migrations | ✅ done (2026-09-03) |
+| Capture SDK (1-line integration) | ✅ done (2026-09-03) |
+| Shared engine (dataset / replay / compare / audit-log / promotion) | ✅ done (2026-09-03) |
+| Worker API (capture endpoint + replay API) | ✅ done (2026-09-03) |
+| Mode A (red team, 50+ attacks) | 🟡 types defined, attack library not started |
+| Mode B (backtest, promotion gate) | ✅ done (2026-09-03) |
+| Dashboard (attack report + promotion report UI) | 🟡 scaffolded, UI not started |
 | Docs: threat-model.md | ❌ not started |
 | Docs: attack-library.md | ❌ not started |
 | Docs: architecture.md | ❌ not started |

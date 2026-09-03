@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "types": ["@cloudflare/workers-types"]
+  },
+  "include": ["src"],
+  "composite": true,
+  "references": [
+    { "path": "../../packages/shared" },
+    { "path": "../../packages/engine" }
+  ]
+}
