@@ -22,7 +22,7 @@ gatelane is the third product in the [lanefoundry](https://github.com/lanefoundr
 - **gatelane** — pre-production safety + eval gate
 
 > [!IMPORTANT]
-> gatelane is an early preview (`0.0.0-dev`). 5–6 week demo target, first demo target is looplane (in-house). Threat model, capture SDK, and promotion primitive are still being designed. Do not deploy in production; expect breaking changes weekly.
+> gatelane is an early preview (`0.0.0-dev`). 5–6 week demo target, first demo target is looplane (in-house). Do not deploy in production; expect breaking changes weekly.
 
 ## Why gatelane
 
@@ -140,51 +140,71 @@ gatelane now exposes a local API on `http://localhost:8787`.
 
 ### Capture a single LLM call
 
-One-line integration on the agent side:
+One-line integration on the agent side via the Worker API:
 
 ```typescript
-import { capture } from "@lanefoundry/gatelane-sdk";
+const res = await fetch("http://localhost:8787/v1/capture", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${GATELANE_CAPTURE_TOKEN}`,
+  },
+  body: JSON.stringify({
+    prompt: [{ role: "user", content: userInput }],
+    model: "gpt-4o",
+    response: openaiResponse,
+    metadata: { traceId: "...", agentVersion: "..." },
+  }),
+});
+// returns { id, traceId }
+// gatelane now has: prompt, response, model, cost, latency, trace
+```
 
-const response = await capture({
+Or programmatically via the engine package (for in-process use):
+
+```typescript
+import { capture } from "@gatelane/engine";
+
+const { response, record } = await capture(env, {
   prompt: [{ role: "user", content: userInput }],
   model: "gpt-4o",
   metadata: { traceId: "...", agentVersion: "..." },
 }, async () => {
   return await openai.chat.completions.create({ /* ... */ });
 });
-// response is the original OpenAI response
-// gatelane now has: prompt, response, model, cost, latency, trace
 ```
 
 ### Run red team against an agent
 
-```bash
-pnpm gatelane redteam \
-  --target http://localhost:3000/agent \
-  --attack-library direct-injection,indirect-via-tool,chain \
-  --report report.json
-```
+Programmatic API (CLI wrapper planned for v0.2):
 
-Output: `report.json` with successful attack payloads, agent responses, evidence, and per-vulnerability patch recommendations.
+```typescript
+import { allVectors, runAttack, generateReport } from "@gatelane/mode-red-team";
+
+const results = await Promise.all(
+  allVectors.map((v) => runAttack(v, "http://localhost:3000/agent")),
+);
+const report = generateReport(results, ["http://localhost:3000/agent"]);
+// report contains: successful attacks, payloads, evidence, patch recommendations
+```
 
 ### Freeze a production slice and backtest
 
-```bash
-# 1. Freeze last 7 days of production traffic into an immutable dataset
-pnpm gatelane freeze-slice \
-  --window 7d \
-  --output dataset.jsonl
+Programmatic API (CLI wrapper planned for v0.2):
 
-# 2. Replay the frozen dataset against a candidate model
-pnpm gatelane backtest \
-  --dataset dataset.jsonl \
-  --candidate-model gpt-5 \
-  --baseline-model gpt-4o \
-  --threshold 0.02
+```typescript
+import { backtest } from "@gatelane/mode-backtest";
 
-# Output: signed promotion report
-# Δ ≥ 0.02 → canary at 10%
-# Δ < 0.02 → auto-rollback
+const report = await backtest(env, {
+  window: "7d",
+  candidateModel: "gpt-5",
+  baselineModel: "gpt-4o",
+  threshold: 0.02,
+  judge: async (prompt, response) => { /* return 0-1 score */ },
+  execute: async (prompt, model) => { /* call LLM */ },
+});
+// report.decision === "promote" → Δ ≥ threshold
+// report.decision === "rollback" → Δ < threshold
 ```
 
 ## Deploy to Cloudflare
@@ -240,30 +260,77 @@ v2 adds compliance mode on top of the same engine. Coverage is built from the v1
 | Attack library | garak (NVIDIA) + PyRIT (Microsoft) + Promptfoo (OpenAI) | Don't reinvent the attack catalog |
 | License | Apache 2.0 | Same as groundlane and looplane |
 
+## Development
+
+```bash
+pnpm install          # install all dependencies
+pnpm dev              # start Worker dev server (localhost:8787)
+pnpm typecheck        # run TypeScript type checking (tsc -b)
+pnpm lint             # run ESLint (flat config + typescript-eslint)
+pnpm test             # run tests (vitest)
+pnpm format:check     # check Prettier formatting
+pnpm format           # auto-format with Prettier
+```
+
+### Worker API endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/v1/capture` | Capture an LLM call (requires Bearer token) |
+| GET | `/v1/datasets` | List all datasets |
+| GET | `/v1/datasets/:id` | Get a dataset by ID |
+| GET | `/v1/replay-runs` | List all replay runs |
+| GET | `/v1/replay-runs/:id` | Get a replay run by ID |
+| GET | `/v1/promotions` | List all promotion reports |
+| GET | `/v1/promotions/:id` | Get a promotion report by ID |
+| GET | `/v1/audit-log` | List audit log entries |
+
+### Dashboard
+
+The dashboard is a React + Vite app with 6 pages (Captures, Datasets, Replay Runs, Promotions, Red Team, Audit Log). To run it locally:
+
+```bash
+cd apps/dashboard
+pnpm install
+pnpm dev              # starts on localhost:5173
+```
+
+### Packages
+
+| Package | Description |
+|---|---|
+| `@gatelane/shared` | Common types (CaptureRecord, Dataset, ReplayRun, PromotionReport, Env) and D1 schema |
+| `@gatelane/engine` | Capture SDK, dataset (freeze-slice), replay, compare, audit log, promotion primitive |
+| `@gatelane/mode-red-team` | 50+ attack vectors (6 categories), runner, report generator |
+| `@gatelane/mode-backtest` | End-to-end backtest flow (freeze → replay → compare → promote/rollback) |
+
 ## Repo layout
 
 ```text
 gatelane/
 ├── README.md
+├── eslint.config.mjs           — ESLint 9 flat config (typescript-eslint)
+├── vitest.config.ts            — Vitest configuration
 ├── docs/
 │   ├── positioning.md          — wedge, market consolidation, who buys
 │   ├── roadmap.md              — 5-6 week demo plan, v0.2 / v1.0
 │   ├── strategic-record.md     — why we pivoted from Agent Platform
-│   ├── threat-model.md         — (planned) OWASP / MITRE / NIST mapping
-│   ├── attack-library.md       — (planned) 50+ attack vectors design
-│   └── architecture.md         — (planned) shared engine internals
+│   ├── threat-model.md         — OWASP / MITRE / NIST mapping
+│   ├── attack-library.md       — 50+ attack vectors reference
+│   └── architecture.md         — shared engine internals, data flow, schema
 ├── packages/
 │   ├── engine/                 — capture SDK + dataset + replay + compare + audit log + promotion primitive
-│   ├── mode-red-team/          — Mode A: garak / PyRIT / Promptfoo integration
+│   ├── mode-red-team/          — Mode A: 6 attack categories, 50+ vectors, runner, report
 │   ├── mode-backtest/          — Mode B: dataset replay + compare + promotion gate
-│   └── shared/                 — common types, D1 schema, models
+│   └── shared/                 — common types, D1 schema
 ├── apps/
-│   ├── worker/                 — Cloudflare Worker (capture endpoint + replay API)
-│   └── dashboard/              — attack report + promotion report UI
+│   ├── worker/                 — Cloudflare Worker (Hono, capture endpoint + replay API)
+│   └── dashboard/              — React + Vite + TanStack Query (6 pages, hash router)
 ├── tests/
 │   ├── unit/
-│   ├── integration/            — 4 coding agents head-to-head
-│   └── e2e/                    — full flow E2E
+│   ├── integration/
+│   └── e2e/
+├── schema/d1.sql               — D1 database schema (via packages/shared)
 ├── package.json                — pnpm workspace root
 ├── pnpm-workspace.yaml
 └── LICENSE                     — Apache 2.0
@@ -274,8 +341,9 @@ gatelane/
 - [Why gatelane](docs/positioning.md) — the promotion-on-backtest-delta wedge
 - [Roadmap](docs/roadmap.md) — 5–6 week demo target, v0.2 and v1.0 plans
 - [Strategic record](docs/strategic-record.md) — why we pivoted from Agent Platform
-- *Threat model* (planned, week 2)
-- *Attack library design* (planned, week 3)
+- [Threat model](docs/threat-model.md) — OWASP Agentic/LLM Top 10, MITRE ATLAS, NIST AI 600-1
+- [Attack library](docs/attack-library.md) — 50+ attack vectors reference
+- [Architecture](docs/architecture.md) — system architecture, data flow, promotion primitive
 
 ## Status
 
