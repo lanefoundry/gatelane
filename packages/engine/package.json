@@ -11,5 +11,8 @@
   },
   "dependencies": {
     "@gatelane/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250408.0"
   }
 }

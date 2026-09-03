@@ -11,10 +11,9 @@
     "resolveJsonModule": true,
     "declaration": true,
     "declarationMap": true,
-    "sourceMap": true,
-    "outDir": "dist",
-    "rootDir": "src"
+    "sourceMap": true
   },
+  "files": [],
   "references": [
     { "path": "packages/shared" },
     { "path": "packages/engine" },
