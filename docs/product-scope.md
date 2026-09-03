@@ -1,7 +1,7 @@
 # gatelane product scope
 
-> v0.3 (2026-09-03)
-> Records the product scope expansion from "red team + backtest" to "red team + blue team + eval" with Langfuse-grade tracing in the shared engine. Adds DeepEval and Promptfoo feature alignment. Supersedes the two-mode (Mode A / Mode B) framing used in earlier docs.
+> v0.4 (2026-09-03)
+> Records the product scope expansion from "red team + backtest" to "red team + blue team + eval" with Langfuse-grade tracing in the shared engine. Adds framework alignment: DeepEval, Promptfoo (eval); Garak, PyRIT, Mindgard (red team). Supersedes the two-mode (Mode A / Mode B) framing used in earlier docs.
 
 ## Overview
 
@@ -20,7 +20,7 @@ Adversarial attack probes that test whether an AI agent can be compromised.
 | Capability | Description |
 |---|---|
 | Attack probes | 50+ prompt injection vectors across 6 categories (direct injection, indirect via tools, chain attacks, context window flood, memory poisoning, tool abuse) |
-| External framework integration | garak (NVIDIA), PyRIT (Microsoft), Promptfoo (OpenAI) |
+| External framework integration | garak (NVIDIA), PyRIT (Microsoft), Promptfoo, Mindgard |
 | Adversarial multi-turn testing | Multi-turn attack scenarios that simulate sustained adversarial pressure across conversation turns |
 | Vulnerability reporting | Structured report with payload, agent response, evidence, and patch recommendation |
 
@@ -169,7 +169,7 @@ packages/engine/
 
 ## 3. Eval framework alignment
 
-The eval pillar and shared engine draw from three external frameworks. Langfuse alignment is covered in section 2. This section maps gatelane's eval and red team capabilities against DeepEval and Promptfoo.
+gatelane draws from six external frameworks across its three pillars. Langfuse alignment (tracing) is covered in section 2. This section maps gatelane's eval and red team capabilities against DeepEval, Promptfoo, Garak, PyRIT, and Mindgard.
 
 ### 3.1 DeepEval alignment
 
@@ -233,9 +233,70 @@ Promptfoo provides deterministic and model-assisted assertions, red teaming, YAM
 | Caching + concurrency | Engine-level caching + Cloudflare Workers concurrency | Leverages edge runtime |
 | Custom providers | Custom metrics (judge functions) | User-defined evaluation logic |
 
-### 3.3 Differentiation: what gatelane adds
+### 3.3 Red team framework alignment (Garak, PyRIT, Mindgard)
 
-These capabilities are not present in DeepEval, Promptfoo, or Langfuse individually:
+These three frameworks focus on adversarial AI security testing. gatelane's red team pillar targets comparable attack coverage while integrating with blue team and eval pillars for end-to-end vulnerability lifecycle management.
+
+#### Attack vector coverage
+
+| Attack category | Garak | PyRIT | Mindgard | gatelane Red team |
+|---|---|---|---|---|
+| Prompt injection (direct) | ✅ promptinject | ✅ direct injection | ✅ | ✅ category 1 |
+| Prompt injection (indirect / via tools) | — | ✅ XPIA orchestrator | ✅ plugin compromise | ✅ category 2 |
+| Jailbreaking | ✅ DAN, encoding | ✅ Skeleton Key, many-shot | ✅ | ✅ category 1 |
+| Chain attacks / multi-turn | ✅ atkgen (adaptive) | ✅ Crescendo, TAP, RedTeaming | ✅ agentic multi-turn | ✅ category 3 |
+| Context window flood | — | — | — | ✅ category 4 |
+| Memory poisoning | — | — | — | ✅ category 5 |
+| Tool abuse | — | Partial | ✅ | ✅ category 6 |
+| Data exfiltration | — | ✅ | ✅ | ✅ |
+| Hallucination exploit | ✅ snowball, package | — | ✅ | Via eval pillar |
+| Encoding bypass (Base64, ROT13, etc.) | ✅ encoding probes | ✅ converters (chainable) | — | v2 scope |
+| Multi-modal (image, audio, video) | — | ✅ cross-modal | ✅ CV, audio | v2 scope |
+| Model extraction / theft | — | — | ✅ | Out of scope |
+| Toxicity / harmful content | ✅ realtoxicityprompts | ✅ jailbreak templates | ✅ | Via eval pillar (safety scoring) |
+| Guardrail bypass | Partial | Partial (converters) | ✅ GuardBuster | v2 scope |
+| XSS / code injection | ✅ xss probes | — | — | Via eval pillar (safety scoring) |
+
+#### Architecture comparison
+
+| Component | Garak | PyRIT | Mindgard | gatelane |
+|---|---|---|---|---|
+| **Attack library** | 50+ probe modules | Templates + 15+ harm categories | Continuously updated (proprietary) | 50+ vectors, 6 categories |
+| **Orchestration** | Harness (probewise) | Orchestrators (Crescendo, TAP, XPIA) | Agentic recon + automated | Attack runner |
+| **Payload transform** | Buffs / Fuzzes | Converters (chainable pipeline) | GuardBuster | v2 scope |
+| **Scoring / detection** | 28 detector types | Scorers (LLM-as-judge, binary, Likert) | Built-in analysis | Vulnerability report + eval pillar |
+| **Target adapters** | 23 generator backends | OpenAI, Azure, HF, HTTP, Playwright | API endpoint only | Provider-agnostic via engine |
+| **Multi-turn** | atkgen (fine-tuned GPT-2) | Crescendo, TAP (attacker LLM feedback) | Agentic multi-turn | Adversarial multi-turn testing |
+| **Persistence** | JSONL logs | SQLite / Azure SQL (cross-session) | SaaS platform | D1 database + trace history |
+| **CI/CD** | CLI-friendly (JSONL output) | `pyrit_scan` CLI | GitHub Actions | CI/CD integration (cross-pillar) |
+| **Compliance mapping** | — | — | MITRE ATLAS, OWASP LLM Top 10 | ATLAS, OWASP Agentic/LLM, NIST |
+| **Deployment** | Open source (Apache 2.0) | Open source (MIT) | SaaS (enterprise) | Self-hosted (Cloudflare Workers) |
+
+#### Feature mapping
+
+| Framework feature | gatelane equivalent | Notes |
+|---|---|---|
+| **Garak** probes (50+ modules, nmap-style) | Attack probes (50+ vectors, 6 categories) | Similar scale; gatelane categorizes by attack surface |
+| **Garak** detectors (28 types) | Vulnerability report + eval scoring | gatelane separates detection (red) from quality scoring (eval) |
+| **Garak** atkgen (adaptive attacker LLM) | Adversarial multi-turn testing | gatelane plans multi-turn with full agent behavior chain |
+| **Garak** HTML report | Structured vulnerability report | gatelane adds patch recommendations + trace provenance |
+| **PyRIT** Crescendo orchestrator | Adversarial multi-turn testing | Gradual escalation strategy; gatelane targets equivalent |
+| **PyRIT** TAP (tree of attacks with pruning) | v2 scope | Parallel multi-path attack exploration |
+| **PyRIT** converters (chainable transforms) | v2 scope | Encoding bypass, cross-modal transforms |
+| **PyRIT** persistent memory (cross-session) | D1 database + engine tracing | Attack history with full trace provenance |
+| **PyRIT** multi-modal attacks | v2 scope | gatelane v1 focuses on text/LLM agents |
+| **PyRIT** scorers (LLM-as-judge, Content Safety) | Eval pillar scoring metrics | gatelane separates scoring into eval pillar |
+| **Mindgard** DAST-AI (runtime testing) | Red team probes + blue team anomaly detection | gatelane splits across two pillars |
+| **Mindgard** agentic recon (attack surface mapping) | v2 scope | Automated discovery of guardrails, system prompts, tools |
+| **Mindgard** continuous security testing | Blue team anomaly detection + CI/CD | gatelane's blue team monitors production continuously |
+| **Mindgard** MITRE ATLAS Adviser | Threat model coverage (section 7) | gatelane maps ATLAS + OWASP + NIST |
+| **Mindgard** compliance reports (SOC 2, GDPR) | Audit log + signed promotion reports | gatelane focuses on deployment provenance |
+| **Mindgard** Burp Suite integration | Out of scope | Traditional AppSec bridge |
+| **Mindgard** shadow AI discovery | Out of scope | Enterprise-specific concern |
+
+### 3.4 Differentiation: what gatelane adds
+
+These capabilities are not present in DeepEval, Promptfoo, Langfuse, Garak, PyRIT, or Mindgard individually:
 
 | Capability | Description | Why it matters |
 |---|---|---|
