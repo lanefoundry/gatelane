@@ -3,9 +3,50 @@
 > Copy-paste the prompt below to your AI coding assistant (Claude Code, Cursor, Copilot, etc.)
 > to quickly integrate gatelane into your project.
 >
-> There are two roles:
-> - **Operator (部署者)** — clone and deploy gatelane Worker once. Gets dashboard + API.
-> - **Integrator (整合者)** — call the HTTP API from your agent. No clone needed.
+> Three paths depending on what you need:
+> - **Red team only** — no deployment needed, just `pnpm install` and scan your agent
+> - **Integrator** — your team already deployed gatelane, just call the HTTP API
+> - **Operator** — deploy the full platform (Cloudflare Worker)
+
+---
+
+## Red team only — no deployment needed
+
+> Just want to scan your agent for vulnerabilities? No Cloudflare, no deployment, no account needed.
+
+````
+I want to run gatelane's red team scan against my agent to find vulnerabilities.
+No deployment needed — it just sends attack payloads via HTTP.
+
+### 1. Install
+
+```bash
+git clone https://github.com/lanefoundry/gatelane.git
+cd gatelane && pnpm install
+```
+
+### 2. Scan my agent
+
+```ts
+import { allVectors, runAttack, generateReport } from "@gatelane/mode-red-team";
+
+const results = await Promise.all(
+  allVectors.map((v) => runAttack(v, {
+    url: "http://localhost:3000/api/chat",  // my agent endpoint
+    name: "my-agent",
+  })),
+);
+const report = generateReport(results, ["my-agent"]);
+// report contains: successful attacks, payloads, evidence, patch recommendations
+```
+
+### Key constraints
+- runAttack sends POST { messages: [{role: "user", content: payload}] } to the target URL
+- Target must accept POST with JSON body and return text
+- 50+ vectors across 6 categories: direct prompt injection, indirect via tool,
+  chain attack, context window flood, memory poisoning, tool abuse
+- Also supports multi-turn attack scenarios via runMultiTurn()
+````
 
 ---
 

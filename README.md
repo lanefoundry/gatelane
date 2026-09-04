@@ -115,19 +115,49 @@ gatelane is **one primitive the rest of the market does not ship**: promotion-on
 > [!NOTE]
 > The 5–6 week demo target ships the capture SDK, dataset, replay, compare, and promotion primitive end-to-end. The quick start below is the v0.1 demo workflow. Production-grade features (canary orchestrator, signed reports, audit export) ship in v0.2.
 
-gatelane is self-hosted. There are two roles:
+gatelane is self-hosted, but **not everything requires deployment**:
 
-- **Operator** — deploy the gatelane Worker once (clone this repo). Gets the dashboard + API.
-- **Integrator** — call the HTTP API from your agent. **No clone needed.** Just `POST` to the deployed URL.
+| What you want | What you need |
+|---|---|
+| Red team scan (50+ attack vectors) | `pnpm install` — runs anywhere, no Cloudflare needed |
+| Eval assertions & scoring | `pnpm install` — pure functions, no infra needed |
+| Try capture + dashboard + backtest locally | `pnpm dev` — wrangler simulates D1/R2/KV locally, **no Cloudflare account needed** |
+| Production deployment | Cloudflare account + `pnpm deploy` |
+| Integrate from your agent (HTTP API) | A deployed gatelane URL — **no clone needed** |
 
 > Using an AI coding assistant? Copy the prompt from [docs/agent-setup-prompt.md](docs/agent-setup-prompt.md) for step-by-step integration instructions.
 
-### For operators: deploy gatelane
+### No-deploy: red team scan
+
+You can run a red team scan against any agent endpoint without deploying anything:
+
+```bash
+git clone https://github.com/lanefoundry/gatelane.git
+cd gatelane && pnpm install
+```
+
+```typescript
+import { allVectors, runAttack, generateReport } from "@gatelane/mode-red-team";
+
+const results = await Promise.all(
+  allVectors.map((v) => runAttack(v, {
+    url: "http://localhost:3000/api/chat",  // your agent
+    name: "my-agent",
+  })),
+);
+const report = generateReport(results, ["my-agent"]);
+```
+
+### Local trial: full platform
+
+`pnpm dev` uses wrangler's local simulation — D1/R2/KV are emulated on your machine. No Cloudflare account needed to try it out.
+
+### For operators: deploy to production
 
 #### Requirements
 
 - Node.js 22+, pnpm 10, Git
-- A Cloudflare account (for production deployment)
+- A Cloudflare account
 - An LLM API key for the eval / backtest judge model (OpenAI, Anthropic, Gemini, or self-hosted)
 
 #### Install

@@ -115,19 +115,49 @@ gatelane 是**市場上其他產品都沒有提供的一個原語**：基於回�
 > [!NOTE]
 > 5-6 週的 demo 目標會端到端交付捕獲 SDK、資料集、重播、比較和升級原語。以下快速開始是 v0.1 demo 工作流程。生產級功能（canary 編排器、簽章報告、稽核匯出）在 v0.2 出貨。
 
-gatelane 是自部署服務。有兩種角色：
+gatelane 是自部署服務，但**不是所有功能都需要部署**：
 
-- **部署者** — 部署 gatelane Worker 一次（需要 clone 此 repo）。取得儀表板 + API。
-- **整合者** — 從你的代理呼叫 HTTP API。**不需要 clone。** 只要 `POST` 到已部署的 URL。
+| 你想做什麼 | 你需要什麼 |
+|---|---|
+| 紅隊掃描（50+ 攻擊向量） | `pnpm install` — 任何環境都能跑，不需要 Cloudflare |
+| Eval 斷言與評分 | `pnpm install` — 純函式，不需要基礎設施 |
+| 在本地試用捕獲 + 儀表板 + 回測 | `pnpm dev` — wrangler 在本地模擬 D1/R2/KV，**不需要 Cloudflare 帳戶** |
+| 生產部署 | Cloudflare 帳戶 + `pnpm deploy` |
+| 從你的代理整合（HTTP API） | 已部署的 gatelane URL — **不需要 clone** |
 
 > 使用 AI 編碼助手？複製 [docs/agent-setup-prompt.md](docs/agent-setup-prompt.md) 中的 prompt 即可取得逐步整合指引。
 
-### 部署者：部署 gatelane
+### 免部署：紅隊掃描
+
+你可以直接對任何代理端點執行紅隊掃描，不需要部署任何東西：
+
+```bash
+git clone https://github.com/lanefoundry/gatelane.git
+cd gatelane && pnpm install
+```
+
+```typescript
+import { allVectors, runAttack, generateReport } from "@gatelane/mode-red-team";
+
+const results = await Promise.all(
+  allVectors.map((v) => runAttack(v, {
+    url: "http://localhost:3000/api/chat",  // 你的代理
+    name: "my-agent",
+  })),
+);
+const report = generateReport(results, ["my-agent"]);
+```
+
+### 本地試用：完整平台
+
+`pnpm dev` 使用 wrangler 的本地模擬模式 — D1/R2/KV 在你的機器上模擬。不需要 Cloudflare 帳戶就能試用。
+
+### 部署者：部署到生產環境
 
 #### 需求
 
 - Node.js 22+、pnpm 10、Git
-- Cloudflare 帳戶（用於生產部署）
+- Cloudflare 帳戶
 - 用於評估/回測裁判模型的 LLM API 金鑰（OpenAI、Anthropic、Gemini 或自建）
 
 #### 安裝
