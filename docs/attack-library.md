@@ -1,12 +1,12 @@
 # gatelane attack library
 
 > v0.1 (2026-09-03)
-> Reference for Mode A red team attack vectors.
+> Reference for red team attack vectors.
 > Implements the `AttackVector` / `AttackResult` / `AttackReport` types in `packages/mode-red-team/src/types.ts`.
 
 ## Overview
 
-gatelane Mode A runs 50+ prompt injection and abuse attacks against coding agents. The attack library is organized into six categories, each implemented as a module under `packages/mode-red-team/src/attack-library/`:
+gatelane red team runs 50+ prompt injection and abuse attacks against coding agents. The attack library is organized into six categories, each implemented as a module under `packages/mode-red-team/src/attack-library/`:
 
 ```text
 packages/mode-red-team/src/attack-library/
@@ -381,7 +381,7 @@ The `AttackReport` aggregates results:
 
 - `packages/mode-red-team/src/types.ts` -- `AttackVector`, `AttackResult`, `AttackReport` type definitions
 - `docs/positioning.md` -- threat model scope and competitive positioning
-- `docs/roadmap.md` -- Mode A deliverables and acceptance criteria
+- `docs/roadmap.md` -- red team deliverables and acceptance criteria
 - [OWASP Top 10 for Agentic Applications](https://owasp.org/www-project-agentic-ai-threats/)
 - [OWASP LLM Top 10](https://owasp.org/www-project-top-10-for-large-language-model-applications/)
 - [MITRE ATLAS](https://atlas.mitre.org/)

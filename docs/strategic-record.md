@@ -100,7 +100,7 @@ agent-platform (Workflow Control Plane, 7 specs, 8 commands)
 
 ## 8. What's preserved from agent-platform
 
-- **`evaluation-learning-loop` spec** → gatelane Mode B (backtest) draws on the conceptual structure
+- **`evaluation-learning-loop` spec** → gatelane blue team (backtest) draws on the conceptual structure
 - **`policy-runtime-controls` spec** → gatelane's patch advisor draws on the input/tool/output/budget guard structure
 - **`provider-tool-routing` spec** → future v0.2 MCP/non-human-identity governance
 - **`observability-evidence-artifacts` spec** → gatelane's audit log architecture

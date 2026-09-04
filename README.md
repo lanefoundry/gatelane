@@ -46,7 +46,7 @@ gatelane ships that primitive.
 
 gatelane runs on a shared engine. Two modes use it.
 
-### Mode A — red team
+### Red team (紅隊)
 
 Run attack probes against a deployed agent. Output: vulnerability list with payload, agent response, evidence, and structured patch recommendation.
 
@@ -59,7 +59,7 @@ attack payload → agent response → success/fail
 
 The attack library ships with 50+ prompt injection vectors across direct prompt injection, indirect injection via tools, chain attacks, context window flood, memory poisoning, and tool abuse. Integrates with [garak](https://github.com/NVIDIA/garak) (NVIDIA), [PyRIT](https://github.com/Azure/PyRIT) (Microsoft), and [Promptfoo](https://github.com/promptfoo/promptfoo) (OpenAI).
 
-### Mode B — backtest
+### Blue team (藍隊)
 
 Replay a frozen slice of production traffic against a new model version. Output: signed promotion report. If `Δ ≥ threshold`, route to canary. Else auto-rollback.
 
@@ -193,7 +193,7 @@ const report = generateReport(results, ["http://localhost:3000/agent"]);
 Programmatic API (CLI wrapper planned for v0.2):
 
 ```typescript
-import { backtest } from "@gatelane/mode-backtest";
+import { backtest } from "@gatelane/mode-blue-team";
 
 const report = await backtest(env, {
   window: "7d",
@@ -230,19 +230,19 @@ Pushes to `main` automatically deploy after the CI quality job succeeds. The rep
 
 > "Are we exposed to known attack vectors? How do we know the patch worked?"
 
-Run **Mode A** before each release. Run **Mode B** after the patch to verify the new version doesn't regress on either quality **or** attack resistance.
+Run **red team** before each release. Run **blue team** after the patch to verify the new version doesn't regress on either quality **or** attack resistance.
 
 ### ML / platform team at a company shipping LLM features
 
 > "Can we ship a new model version without watching the comparison view all day?"
 
-Run **Mode B** on every PR that touches the model config. The promotion gate routes to canary or rolls back automatically.
+Run **blue team** on every PR that touches the model config. The promotion gate routes to canary or rolls back automatically.
 
 ### Coding agent team
 
 > "What if my coding agent is hijacked via prompt injection? How do I know when I've fixed it?"
 
-Run **Mode A** with coding-agent-specific attack vectors (tool abuse, indirect injection via code execution). Run **Mode B** with a frozen dataset of your agent's production traffic to verify the patch.
+Run **red team** with coding-agent-specific attack vectors (tool abuse, indirect injection via code execution). Run **blue team** with a frozen dataset of your agent's production traffic to verify the patch.
 
 ### CISO / compliance officer (v2 scope)
 
@@ -302,7 +302,7 @@ pnpm dev              # starts on localhost:5173
 | `@gatelane/shared` | Common types (CaptureRecord, Dataset, ReplayRun, PromotionReport, Env) and D1 schema |
 | `@gatelane/engine` | Capture SDK, dataset (freeze-slice), replay, compare, audit log, promotion primitive |
 | `@gatelane/mode-red-team` | 50+ attack vectors (6 categories), runner, report generator |
-| `@gatelane/mode-backtest` | End-to-end backtest flow (freeze → replay → compare → promote/rollback) |
+| `@gatelane/mode-blue-team` | End-to-end backtest flow (freeze → replay → compare → promote/rollback) |
 
 ## Repo layout
 
@@ -320,8 +320,8 @@ gatelane/
 │   └── architecture.md         — shared engine internals, data flow, schema
 ├── packages/
 │   ├── engine/                 — capture SDK + dataset + replay + compare + audit log + promotion primitive
-│   ├── mode-red-team/          — Mode A: 6 attack categories, 50+ vectors, runner, report
-│   ├── mode-backtest/          — Mode B: dataset replay + compare + promotion gate
+│   ├── mode-red-team/          — Red team: 6 attack categories, 50+ vectors, runner, report
+│   ├── mode-blue-team/         — Blue team: dataset replay + compare + promotion gate
 │   └── shared/                 — common types, D1 schema
 ├── apps/
 │   ├── worker/                 — Cloudflare Worker (Hono, capture endpoint + replay API)
@@ -355,8 +355,8 @@ gatelane/
 | Capture SDK (1-line integration) | ✅ done (2026-09-03) |
 | Shared engine (dataset / replay / compare / audit-log / promotion) | ✅ done (2026-09-03) |
 | Worker API (capture endpoint + replay API) | ✅ done (2026-09-03) |
-| Mode A (red team, 50+ attacks) | ✅ done (2026-09-03) — 6 categories, 50+ vectors, runner, report |
-| Mode B (backtest, promotion gate) | ✅ done (2026-09-03) |
+| Red team (紅隊, 50+ attacks) | ✅ done (2026-09-03) — 6 categories, 50+ vectors, runner, report |
+| Blue team (藍隊, backtest + promotion gate) | ✅ done (2026-09-03) |
 | Dashboard (attack report + promotion report UI) | ✅ done (2026-09-03) — 6 pages, hash router, TanStack Query |
 | Docs: threat-model.md | ✅ done (2026-09-03) |
 | Docs: attack-library.md | ✅ done (2026-09-03) |

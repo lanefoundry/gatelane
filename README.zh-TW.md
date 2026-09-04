@@ -46,7 +46,7 @@ gatelane 提供這個原語。
 
 gatelane 在共用引擎上運行。兩種模式使用它。
 
-### 模式 A — 紅隊
+### 紅隊 — "能被攻破嗎？"
 
 對已部署的代理執行攻擊探測。輸出：包含有效載荷、代理回應、證據和結構化修補建議的漏洞清單。
 
@@ -59,7 +59,7 @@ gatelane 在共用引擎上運行。兩種模式使用它。
 
 攻擊庫包含 50+ 個 prompt injection 向量，涵蓋直接 prompt injection、透過工具的間接 injection、連鎖攻擊、上下文視窗洪泛、記憶體投毒和工具濫用。整合 [garak](https://github.com/NVIDIA/garak)（NVIDIA）、[PyRIT](https://github.com/Azure/PyRIT)（Microsoft）和 [Promptfoo](https://github.com/promptfoo/promptfoo)（OpenAI）。
 
-### 模式 B — 回測
+### 藍隊 — "生產環境健康嗎？"
 
 將凍結的生產流量切片重播到新模型版本。輸出：簽章升級報告。如果 `Δ ≥ threshold`，路由到 canary。否則自動回滾。
 
@@ -193,7 +193,7 @@ const report = generateReport(results, ["http://localhost:3000/agent"]);
 程式化 API（CLI 封裝計劃在 v0.2）：
 
 ```typescript
-import { backtest } from "@gatelane/mode-backtest";
+import { backtest } from "@gatelane/mode-blue-team";
 
 const report = await backtest(env, {
   window: "7d",
@@ -230,19 +230,19 @@ pnpm run deploy
 
 > 「我們是否暴露於已知的攻擊向量？我們怎麼知道修補有效？」
 
-在每次發佈前執行**模式 A**。修補後執行**模式 B**，驗證新版本不會在品質**或**攻擊抵抗力上退化。
+在每次發佈前執行**紅隊**。修補後執行**藍隊**，驗證新版本不會在品質**或**攻擊抵抗力上退化。
 
 ### 正在出貨 LLM 功能的 ML / 平台團隊
 
 > 「我們能否在不整天盯著比較視圖的情況下出貨新模型版本？」
 
-在每個修改模型配置的 PR 上執行**模式 B**。升級閘門自動路由到 canary 或回滾。
+在每個修改模型配置的 PR 上執行**藍隊**。升級閘門自動路由到 canary 或回滾。
 
 ### 程式碼代理團隊
 
 > 「如果我的程式碼代理被 prompt injection 劫持怎麼辦？我怎麼知道什麼時候修好了？」
 
-使用程式碼代理特定的攻擊向量（工具濫用、透過程式碼執行的間接 injection）執行**模式 A**。使用代理生產流量的凍結資料集執行**模式 B** 來驗證修補。
+使用程式碼代理特定的攻擊向量（工具濫用、透過程式碼執行的間接 injection）執行**紅隊**。使用代理生產流量的凍結資料集執行**藍隊** 來驗證修補。
 
 ### CISO / 合規長（v2 範圍）
 
@@ -302,7 +302,7 @@ pnpm dev              # 啟動於 localhost:5173
 | `@gatelane/shared` | 共用型別（CaptureRecord、Dataset、ReplayRun、PromotionReport、Env）和 D1 schema |
 | `@gatelane/engine` | 捕獲 SDK、資料集（freeze-slice）、重播、比較、稽核日誌、升級原語 |
 | `@gatelane/mode-red-team` | 50+ 攻擊向量（6 類別）、執行器、報告產生器 |
-| `@gatelane/mode-backtest` | 端到端回測流程（凍結 → 重播 → 比較 → 升級/回滾） |
+| `@gatelane/mode-blue-team` | 端到端回測流程（凍結 → 重播 → 比較 → 升級/回滾） |
 
 ## 儲存庫結構
 
@@ -321,8 +321,8 @@ gatelane/
 │   └── architecture.md         — 共用引擎內部、資料流、schema
 ├── packages/
 │   ├── engine/                 — 捕獲 SDK + 資料集 + 重播 + 比較 + 稽核日誌 + 升級原語
-│   ├── mode-red-team/          — 模式 A：6 攻擊類別、50+ 向量、執行器、報告
-│   ├── mode-backtest/          — 模式 B：資料集重播 + 比較 + 升級閘門
+│   ├── mode-red-team/          — 紅隊：6 攻擊類別、50+ 向量、執行器、報告
+│   ├── mode-blue-team/         — 藍隊：資料集重播 + 比較 + 升級閘門
 │   └── shared/                 — 共用型別、D1 schema
 ├── apps/
 │   ├── worker/                 — Cloudflare Worker（Hono、捕獲端點 + 重播 API）
@@ -356,8 +356,8 @@ gatelane/
 | 捕獲 SDK（一行整合） | ✅ 完成 (2026-09-03) |
 | 共用引擎（資料集 / 重播 / 比較 / 稽核日誌 / 升級） | ✅ 完成 (2026-09-03) |
 | Worker API（捕獲端點 + 重播 API） | ✅ 完成 (2026-09-03) |
-| 模式 A（紅隊，50+ 攻擊） | ✅ 完成 (2026-09-03) — 6 類別、50+ 向量、執行器、報告 |
-| 模式 B（回測，升級閘門） | ✅ 完成 (2026-09-03) |
+| 紅隊（50+ 攻擊） | ✅ 完成 (2026-09-03) — 6 類別、50+ 向量、執行器、報告 |
+| 藍隊（回測 + 升級閘門） | ✅ 完成 (2026-09-03) |
 | 儀表板（攻擊報告 + 升級報告 UI） | ✅ 完成 (2026-09-03) — 6 頁面、hash router、TanStack Query |
 | 文件：threat-model.md | ✅ 完成 (2026-09-03) |
 | 文件：attack-library.md | ✅ 完成 (2026-09-03) |

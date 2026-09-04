@@ -43,7 +43,7 @@ apps/worker/
 - [ ] Audit log: every capture / replay / promotion event recorded
 - [ ] D1 schema deployed, all tables created
 
-## Week 3-4: Mode A — red team
+## Week 3-4: Red team (紅隊)
 
 ### Goal
 
@@ -85,7 +85,7 @@ packages/mode-red-team/
 - [ ] Each successful attack produces: payload, agent response, evidence, structured patch recommendation
 - [ ] First report: **gatelane head-to-head coding agent attack report (4 agents × 50+ attacks)**
 
-## Week 5-6: Mode B — backtest + promotion gate
+## Week 5-6: Blue team (藍隊) — backtest + promotion gate
 
 ### Goal
 
@@ -94,7 +94,7 @@ Replay production traffic through new model / new prompt. Compute Δ. Auto-promo
 ### Deliverables
 
 ```text
-packages/mode-backtest/
+packages/mode-blue-team/
 ├── src/
 │   ├── freeze-slice.ts       — freeze prod traffic into immutable dataset
 │   ├── replay-batch.ts        — replay dataset against candidate model
@@ -125,7 +125,7 @@ apps/dashboard/
 - [ ] Compare-scores: Δ computed across score / cost / latency / regression
 - [ ] Promotion-decision: threshold rules, signed report
 - [ ] Canary-orchestrator: 10% canary, 24h observe, auto-promote or auto-rollback
-- [ ] First promotion report: **gatelane validates looplane's own patch via Mode B**
+- [ ] First promotion report: **gatelane validates looplane's own patch via blue team**
 
 ## Cross-cutting (all 6 weeks)
 
@@ -138,7 +138,7 @@ apps/dashboard/
 
 - [ ] gatelane head-to-head coding agent attack report (public, 4 agents)
 - [ ] looplane vulnerability list (private, internal use)
-- [ ] looplane patch validated via Mode B backtest
+- [ ] looplane patch validated via blue team backtest
 - [ ] At least 1 promotion-gate cycle from canary → promote/rollback
 
 ## v0.2 (post-demo)

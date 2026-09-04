@@ -12,12 +12,12 @@ and auto-promotes or rolls back based on a configurable quality threshold.
 Gatelane is a monorepo organized around a **shared engine** that powers two
 independent operating modes:
 
-- **Mode A -- Backtest** (`packages/mode-backtest`): Takes a time window of
+- **Blue team (藍隊) — Backtest** (`packages/mode-blue-team`): Takes a time window of
   production captures, freezes them into a dataset, replays the dataset
   against a candidate model, and produces a promote/rollback decision.
   Designed for scheduled or on-demand model upgrades.
 
-- **Mode B -- Red Team** (`packages/mode-red-team`): Runs adversarial
+- **Red team (紅隊)** (`packages/mode-red-team`): Runs adversarial
   attack vectors (prompt injection, tool abuse, context flooding, etc.)
   against a target and produces a vulnerability report. Designed for
   pre-deployment security validation.
@@ -36,7 +36,7 @@ capture and query API and can orchestrate either mode.
                   |                           |
         +---------+---------+       +---------+---------+
         | packages/         |       | packages/         |
-        | mode-backtest     |       | mode-red-team     |
+        | mode-blue-team    |       | mode-red-team     |
         +--------+----------+       +--------+----------+
                  |                           |
                  +----------+----------------+
@@ -67,7 +67,7 @@ packages/shared          (zero deps)
 packages/engine          (depends on shared)
     ^
     |
-packages/mode-backtest   (depends on shared + engine)
+packages/mode-blue-team  (depends on shared + engine)
 packages/mode-red-team   (depends on shared + engine)
     ^
     |
@@ -80,7 +80,7 @@ apps/worker              (depends on shared + engine + hono)
 |--------------------------|------------------------|-------------------------------------------------------|
 | `packages/shared`        | `@gatelane/shared`     | TypeScript interfaces, D1 SQL schema, `Env` binding   |
 | `packages/engine`        | `@gatelane/engine`     | Core primitives: capture, dataset, replay, compare, promotion, audit log |
-| `packages/mode-backtest` | `@gatelane/mode-backtest` | Orchestrates freeze-replay-promote in one call      |
+| `packages/mode-blue-team` | `@gatelane/mode-blue-team` | Orchestrates freeze-replay-promote in one call      |
 | `packages/mode-red-team` | `@gatelane/mode-red-team` | Adversarial attack vectors and reporting types       |
 | `apps/worker`            | `@gatelane/worker`     | Cloudflare Worker; Hono HTTP server                   |
 
@@ -431,7 +431,7 @@ after generation.
 
 ### Backtest orchestration
 
-The `backtest()` function in `packages/mode-backtest` chains the full
+The `backtest()` function in `packages/mode-blue-team` chains the full
 pipeline in one call:
 
 1. Parse a human-readable window string (e.g. `"7d"`, `"24h"`, `"30m"`)

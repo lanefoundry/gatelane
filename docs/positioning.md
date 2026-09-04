@@ -57,7 +57,7 @@ What **every product documents** as "backtest" but **none of them turn into a pr
 
 The AI agent security market is also active in 2025-2026 (see `docs/strategic-record.md` §7), but most players (Lakera, Mindgard, Noma, TrojAI, Pillar, Straiker, CyCraft) compete on **attack surface coverage** — how many attacks you can throw, how many frameworks you map to.
 
-gatelane's red team mode (Mode A) is **deliberately smaller** than these players' attack libraries. We're not trying to be the broadest red team. We're trying to be the **one tool that runs both red team and backtest from the same engine**, with **promotion gate as the spine**.
+gatelane's red team mode is **deliberately smaller** than these players' attack libraries. We're not trying to be the broadest red team. We're trying to be the **one tool that runs both red team and backtest from the same engine**, with **promotion gate as the spine**.
 
 The differentiator is not "we have more attack vectors" — it's "we close the loop":
 
@@ -92,9 +92,9 @@ The 22+ credible AI gateway options already cover the routing / caching / pricin
 
 | Buyer | What they need | What gatelane gives them |
 |---|---|---|
-| **Security team at a company shipping agents** | "Are we exposed to known attack vectors? How do we know the patch worked?" | Mode A: red team report. Mode B: regression check. |
-| **ML / platform team at a company shipping LLM features** | "Can we ship a new model version without watching the comparison view all day?" | Mode B: promotion gate. |
-| **Coding agent team** | "What if my coding agent is hijacked via prompt injection? How do I know when I've fixed it?" | Mode A on coding-agent-specific attacks. Mode B to validate the fix. |
+| **Security team at a company shipping agents** | "Are we exposed to known attack vectors? How do we know the patch worked?" | Red team: attack report. Blue team: regression check. |
+| **ML / platform team at a company shipping LLM features** | "Can we ship a new model version without watching the comparison view all day?" | Blue team: promotion gate. |
+| **Coding agent team** | "What if my coding agent is hijacked via prompt injection? How do I know when I've fixed it?" | Red team on coding-agent-specific attacks. Blue team to validate the fix. |
 | **CISO / compliance officer at a regulated company** | "Are we compliant with AI Basic Act / NIST AI 600-1?" | v2 scope — compliance mode built on the same engine. |
 
 ## What this is NOT
