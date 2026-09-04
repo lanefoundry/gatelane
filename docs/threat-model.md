@@ -1,11 +1,11 @@
 # gatelane threat model
 
 > v0.1 (2026-09-03)
-> Covers the threat landscape for AI coding agents that gatelane's red team (Mode A) and backtest (Mode B) engines are designed to address. For product positioning, see `positioning.md`. For the demo roadmap, see `roadmap.md`.
+> Covers the threat landscape for AI coding agents that gatelane's red team and blue team engines are designed to address. For product positioning, see `positioning.md`. For the demo roadmap, see `roadmap.md`.
 
 ## 1. Scope and objectives
 
-gatelane is a pre-production safety and evaluation gate for AI agents. Its threat model defines the attack surface that Mode A (red team) probes and the regression surface that Mode B (backtest) guards against.
+gatelane is a pre-production safety and evaluation gate for AI agents. Its threat model defines the attack surface that the red team probes and the regression surface that the blue team guards against.
 
 **Primary targets (v1):** coding agents -- Claude Code, Codex CLI, looplane, opencode.
 
@@ -18,7 +18,7 @@ gatelane is a pre-production safety and evaluation gate for AI agents. Its threa
 5. Document Taiwan AI Basic Act v2 scope for post-v1 compliance mode.
 6. Enumerate coding-agent-specific threats that cut across framework categories.
 
-**Design principle:** gatelane does not attempt to be the broadest attack library. The value is closing the loop -- from vulnerability discovery (Mode A) through patch verification (Mode B) to signed promotion or auto-rollback. The threat model therefore prioritizes depth on coding-agent-relevant vectors over breadth across all possible AI attack surfaces.
+**Design principle:** gatelane does not attempt to be the broadest attack library. The value is closing the loop -- from vulnerability discovery (red team) through patch verification (blue team) to signed promotion or auto-rollback. The threat model therefore prioritizes depth on coding-agent-relevant vectors over breadth across all possible AI attack surfaces.
 
 ---
 
@@ -28,16 +28,16 @@ The [OWASP Top 10 for Agentic Applications](https://genai.owasp.org/) defines th
 
 | ID | Name | Description | gatelane coverage |
 |---|---|---|---|
-| ASI01 | Agentic Prompt Injection | Adversarial input that hijacks the agent's control flow through direct or indirect prompt injection. Includes injections embedded in tool outputs, retrieved documents, and code comments. | Mode A: `direct-prompt-injection` and `indirect-via-tool` attack categories. 20+ injection vectors targeting system prompt override, goal hijacking, and instruction smuggling. Mode B: regression check that patched agents do not re-expose injection surfaces under new model versions. |
-| ASI02 | Unsafe Tool/Function Execution | Agent invokes tools with malicious or unvalidated parameters, leading to unauthorized file system access, code execution, or network exfiltration. | Mode A: `tool-abuse` attack category. Vectors include shell command injection via tool arguments, file system traversal through tool parameters, and unauthorized network calls. Mode B: replay checks that tool invocation patterns remain within policy bounds. |
-| ASI03 | Insufficient Access Controls | Agent operates with overly broad permissions, enabling privilege escalation when compromised. | Mode A: probes that attempt to escalate from read to write permissions, access files outside the working directory, or invoke tools not in the agent's declared capability set. Mode B: audit log verification that access patterns in new model versions do not exceed baseline scope. |
-| ASI04 | Inadequate Sandboxing | Agent execution environment lacks isolation, allowing a compromised agent to affect the host system or other tenants. | Mode A: sandbox escape vectors targeting container breakout, environment variable leakage, and process spawning outside the sandbox. Coding agents are particularly exposed here because they routinely execute generated code. |
-| ASI05 | Insufficient Agent Authentication and Authorization | Weak or missing authentication between agents, between agents and tools, or between agents and users. | Mode A: vectors that impersonate upstream services, forge tool responses, or replay captured authentication tokens. Mode B: verification that authentication handshake patterns do not regress. |
-| ASI06 | Insufficient Monitoring and Logging | Agent activity is not logged at sufficient granularity to detect compromise. | gatelane's capture SDK and audit log are the direct mitigation. Every capture, replay, promotion, and rollback event is recorded with trace ID, model SHA, and actor identity. Mode B promotion reports are signed and include full provenance. |
-| ASI07 | Agentic RAG Poisoning | Retrieval-augmented generation pipelines are poisoned through adversarial documents in the retrieval corpus. | Mode A: `indirect-via-tool` vectors that plant adversarial content in files the agent will read. For coding agents, this means poisoned code comments, README files, dependency manifests, and configuration files. |
-| ASI08 | Inadequate Error Handling | Agent leaks internal state, credentials, or system architecture details through error messages. | Mode A: vectors designed to trigger error paths -- malformed tool responses, invalid JSON, timeout conditions -- and capture whether the agent leaks sensitive context. Mode B: regression check that error handling does not degrade under new models. |
-| ASI09 | Excessive Autonomy | Agent takes consequential actions (file deletion, commits, deployments) without human confirmation. | Mode A: chain attacks that attempt to trick the agent into executing multi-step destructive sequences. Mode B: verification that autonomy boundaries (confirmation prompts, approval gates) remain intact across model versions. |
-| ASI10 | Insecure Multi-Agent Communication | Messages between agents in a multi-agent system are not validated, enabling one compromised agent to manipulate others. | Mode A: vectors targeting inter-agent message passing, including injections in shared context and spoofed agent identities. Relevant for coding agents that delegate subtasks (e.g., Claude Code spawning child sessions). |
+| ASI01 | Agentic Prompt Injection | Adversarial input that hijacks the agent's control flow through direct or indirect prompt injection. Includes injections embedded in tool outputs, retrieved documents, and code comments. | Red team: `direct-prompt-injection` and `indirect-via-tool` attack categories. 20+ injection vectors targeting system prompt override, goal hijacking, and instruction smuggling. Blue team: regression check that patched agents do not re-expose injection surfaces under new model versions. |
+| ASI02 | Unsafe Tool/Function Execution | Agent invokes tools with malicious or unvalidated parameters, leading to unauthorized file system access, code execution, or network exfiltration. | Red team: `tool-abuse` attack category. Vectors include shell command injection via tool arguments, file system traversal through tool parameters, and unauthorized network calls. Blue team: replay checks that tool invocation patterns remain within policy bounds. |
+| ASI03 | Insufficient Access Controls | Agent operates with overly broad permissions, enabling privilege escalation when compromised. | Red team: probes that attempt to escalate from read to write permissions, access files outside the working directory, or invoke tools not in the agent's declared capability set. Blue team: audit log verification that access patterns in new model versions do not exceed baseline scope. |
+| ASI04 | Inadequate Sandboxing | Agent execution environment lacks isolation, allowing a compromised agent to affect the host system or other tenants. | Red team: sandbox escape vectors targeting container breakout, environment variable leakage, and process spawning outside the sandbox. Coding agents are particularly exposed here because they routinely execute generated code. |
+| ASI05 | Insufficient Agent Authentication and Authorization | Weak or missing authentication between agents, between agents and tools, or between agents and users. | Red team: vectors that impersonate upstream services, forge tool responses, or replay captured authentication tokens. Blue team: verification that authentication handshake patterns do not regress. |
+| ASI06 | Insufficient Monitoring and Logging | Agent activity is not logged at sufficient granularity to detect compromise. | gatelane's capture SDK and audit log are the direct mitigation. Every capture, replay, promotion, and rollback event is recorded with trace ID, model SHA, and actor identity. Blue team promotion reports are signed and include full provenance. |
+| ASI07 | Agentic RAG Poisoning | Retrieval-augmented generation pipelines are poisoned through adversarial documents in the retrieval corpus. | Red team: `indirect-via-tool` vectors that plant adversarial content in files the agent will read. For coding agents, this means poisoned code comments, README files, dependency manifests, and configuration files. |
+| ASI08 | Inadequate Error Handling | Agent leaks internal state, credentials, or system architecture details through error messages. | Red team: vectors designed to trigger error paths -- malformed tool responses, invalid JSON, timeout conditions -- and capture whether the agent leaks sensitive context. Blue team: regression check that error handling does not degrade under new models. |
+| ASI09 | Excessive Autonomy | Agent takes consequential actions (file deletion, commits, deployments) without human confirmation. | Red team: chain attacks that attempt to trick the agent into executing multi-step destructive sequences. Blue team: verification that autonomy boundaries (confirmation prompts, approval gates) remain intact across model versions. |
+| ASI10 | Insecure Multi-Agent Communication | Messages between agents in a multi-agent system are not validated, enabling one compromised agent to manipulate others. | Red team: vectors targeting inter-agent message passing, including injections in shared context and spoofed agent identities. Relevant for coding agents that delegate subtasks (e.g., Claude Code spawning child sessions). |
 
 ---
 
@@ -47,16 +47,16 @@ The [OWASP LLM Top 10 (2026)](https://genai.owasp.org/) covers risks specific to
 
 | ID | Name | Description | gatelane coverage |
 |---|---|---|---|
-| LLM01 | Prompt Injection | Direct and indirect manipulation of LLM behavior through crafted inputs. | Unified with ASI01. Mode A ships 20+ prompt injection variants including encoding-based evasion, multi-turn injection, and delimiter confusion. |
-| LLM02 | Sensitive Information Disclosure | Model reveals training data, system prompts, API keys, or user data. | Mode A: exfiltration probes that attempt to extract system prompts, environment variables, API keys from `.env` files, and private code via crafted queries. Mode B: checks that new model versions do not increase disclosure surface. |
-| LLM03 | Supply Chain Vulnerabilities | Compromised dependencies, training data poisoning, or tampered model weights. | Mode A: vectors that test whether the agent blindly trusts and executes content from third-party packages, downloaded scripts, or LLM-suggested dependencies. Mode B: promotion report includes model SHA and judge SHA for provenance. |
-| LLM04 | Data and Model Poisoning | Adversarial manipulation of training or fine-tuning data to embed backdoors. | Mode A: behavioral probes for known poisoning patterns (trigger phrases, systematic bias in code generation). Mode B: regression checks comparing behavioral distributions across model versions. |
-| LLM05 | Improper Output Handling | LLM output is consumed without validation, leading to injection into downstream systems (XSS, SQL injection, command injection via generated code). | Mode A: vectors that prompt the agent to generate code containing known vulnerability patterns (SQL injection, command injection, path traversal). Highly relevant for coding agents. |
-| LLM06 | Excessive Agency | Model performs actions beyond intended scope, compounded by unnecessary permissions. | Unified with ASI09. Mode A tests boundary enforcement. Mode B verifies that agency scope does not expand under new model versions. |
-| LLM07 | System Prompt Leakage | Exposure of the system prompt through direct queries or side-channel inference. | Mode A: dedicated system prompt extraction vectors including role-play attacks, instruction repetition requests, and encoding tricks. |
-| LLM08 | Vector and Embedding Weaknesses | Adversarial manipulation of embedding spaces to influence retrieval results. | Mode A: limited v1 coverage. Relevant for coding agents that use semantic code search. Expanded coverage planned for v0.2. |
-| LLM09 | Misinformation | Model generates plausible but incorrect information, particularly dangerous in code generation (wrong API usage, insecure defaults, deprecated patterns). | Mode B: regression scoring includes correctness checks. Judge model evaluates whether generated code is functionally correct, not just syntactically valid. |
-| LLM10 | Unbounded Consumption | Resource exhaustion through crafted inputs that cause excessive token generation, infinite loops, or recursive tool calls. | Mode A: `context-window-flood` attack category. Vectors include context stuffing, recursive expansion prompts, and infinite loop triggers. Mode B: cost and latency regression checks in promotion reports. |
+| LLM01 | Prompt Injection | Direct and indirect manipulation of LLM behavior through crafted inputs. | Unified with ASI01. Red team ships 20+ prompt injection variants including encoding-based evasion, multi-turn injection, and delimiter confusion. |
+| LLM02 | Sensitive Information Disclosure | Model reveals training data, system prompts, API keys, or user data. | Red team: exfiltration probes that attempt to extract system prompts, environment variables, API keys from `.env` files, and private code via crafted queries. Blue team: checks that new model versions do not increase disclosure surface. |
+| LLM03 | Supply Chain Vulnerabilities | Compromised dependencies, training data poisoning, or tampered model weights. | Red team: vectors that test whether the agent blindly trusts and executes content from third-party packages, downloaded scripts, or LLM-suggested dependencies. Blue team: promotion report includes model SHA and judge SHA for provenance. |
+| LLM04 | Data and Model Poisoning | Adversarial manipulation of training or fine-tuning data to embed backdoors. | Red team: behavioral probes for known poisoning patterns (trigger phrases, systematic bias in code generation). Blue team: regression checks comparing behavioral distributions across model versions. |
+| LLM05 | Improper Output Handling | LLM output is consumed without validation, leading to injection into downstream systems (XSS, SQL injection, command injection via generated code). | Red team: vectors that prompt the agent to generate code containing known vulnerability patterns (SQL injection, command injection, path traversal). Highly relevant for coding agents. |
+| LLM06 | Excessive Agency | Model performs actions beyond intended scope, compounded by unnecessary permissions. | Unified with ASI09. Red team tests boundary enforcement. Blue team verifies that agency scope does not expand under new model versions. |
+| LLM07 | System Prompt Leakage | Exposure of the system prompt through direct queries or side-channel inference. | Red team: dedicated system prompt extraction vectors including role-play attacks, instruction repetition requests, and encoding tricks. |
+| LLM08 | Vector and Embedding Weaknesses | Adversarial manipulation of embedding spaces to influence retrieval results. | Red team: limited v1 coverage. Relevant for coding agents that use semantic code search. Expanded coverage planned for v0.2. |
+| LLM09 | Misinformation | Model generates plausible but incorrect information, particularly dangerous in code generation (wrong API usage, insecure defaults, deprecated patterns). | Blue team: regression scoring includes correctness checks. Judge model evaluates whether generated code is functionally correct, not just syntactically valid. |
+| LLM10 | Unbounded Consumption | Resource exhaustion through crafted inputs that cause excessive token generation, infinite loops, or recursive tool calls. | Red team: `context-window-flood` attack category. Vectors include context stuffing, recursive expansion prompts, and infinite loop triggers. Blue team: cost and latency regression checks in promotion reports. |
 
 ---
 
@@ -69,8 +69,8 @@ The [OWASP LLM Top 10 (2026)](https://genai.owasp.org/) covers risks specific to
 | ATLAS tactic | Relevance to coding agents | gatelane v1 depth |
 |---|---|---|
 | Reconnaissance | Attacker enumerates agent capabilities, tools, and model version. | Technique-level. Probes that discover tool lists, model identifiers, and capability boundaries. |
-| Resource Development | Attacker prepares adversarial artifacts (poisoned repos, malicious packages). | Tactic-level. Supply chain vectors in Mode A. |
-| Initial Access | First entry point into the agent (prompt injection, poisoned input). | Technique-level. Core of Mode A attack library. |
+| Resource Development | Attacker prepares adversarial artifacts (poisoned repos, malicious packages). | Tactic-level. Supply chain vectors in red team. |
+| Initial Access | First entry point into the agent (prompt injection, poisoned input). | Technique-level. Core of red team attack library. |
 | ML Model Access | Attacker gains query access to the underlying model. | Technique-level. Relevant when coding agents expose model endpoints. |
 | Execution | Attacker causes the agent to execute adversarial code or commands. | Technique-level. `tool-abuse` and code execution vectors. |
 | Persistence | Attacker establishes lasting presence (memory poisoning, config modification). | Technique-level. `memory-poisoning` attack category. |
@@ -94,7 +94,7 @@ The [OWASP LLM Top 10 (2026)](https://genai.owasp.org/) covers risks specific to
 | AML.T0056 -- LLM Plugin/Tool Compromise | Malicious MCP servers, compromised tool endpoints | `tool-abuse`, `indirect-via-tool` |
 | AML.T0043 -- Craft Adversarial Data | Poisoned code files, README injection, dependency confusion | `indirect-via-tool`, `memory-poisoning` |
 | AML.T0048 -- Exfiltration via ML API | Using the agent's tool-calling to exfiltrate data | `tool-abuse` (exfiltration subset) |
-| AML.T0040 -- ML Supply Chain Compromise | Compromised model weights, poisoned fine-tuning data | Supply chain probes (Mode A), model SHA verification (Mode B) |
+| AML.T0040 -- ML Supply Chain Compromise | Compromised model weights, poisoned fine-tuning data | Supply chain probes (red team), model SHA verification (blue team) |
 | AML.T0044 -- Full ML Model Access | Unrestricted query access to the underlying LLM | Reconnaissance probes, access control checks |
 | AML.T0057 -- LLM Meta Prompt Extraction | Extracting system prompts or meta-instructions | `direct-prompt-injection` (extraction subset) |
 
@@ -106,18 +106,18 @@ The [OWASP LLM Top 10 (2026)](https://genai.owasp.org/) covers risks specific to
 
 | # | NIST AI 600-1 risk category | gatelane mapping |
 |---|---|---|
-| 1 | CBRN Information or Capabilities | Out of primary scope for coding agents. Mode A includes vectors testing whether the agent can be tricked into generating dangerous scripts (e.g., network attack tools, cryptominers). |
-| 2 | Confabulation | Mode B: regression scoring penalizes confabulated code (functions that reference nonexistent APIs, hallucinated library methods). Judge model checks factual correctness. |
-| 3 | Data Privacy | Mode A: exfiltration probes. Mode B: audit log ensures all data flows are recorded. Capture SDK records prompts/responses but supports PII redaction configuration. |
-| 4 | Environmental | Mode B: promotion reports include cost metrics (token usage, API cost). Regression checks flag candidate models with significantly higher resource consumption. |
-| 5 | Human-AI Configuration | Mode A: tests for excessive autonomy (ASI09). Mode B: verifies that human approval gates remain functional across model versions. |
-| 6 | Information Integrity | Mode A: tests for misinformation in generated code (wrong APIs, insecure defaults). Mode B: correctness scoring in replay comparisons. |
-| 7 | Information Security | Core of gatelane's Mode A. Full OWASP Agentic Top 10 and LLM Top 10 coverage as detailed in sections 2 and 3. |
-| 8 | Intellectual Property | Mode A: vectors testing whether the agent reproduces copyrighted code verbatim. Mode B: replay scoring can flag outputs with high similarity to known licensed code. |
-| 9 | Obscene, Degrading, and/or Abusive Content | Limited scope for coding agents. Mode A includes vectors testing whether safety filters can be bypassed to generate harmful content through code comments or documentation. |
-| 10 | Value Chain and Component Integration | Mode A: supply chain vectors (LLM03). Mode B: promotion report includes full provenance (model SHA, judge SHA, dataset lineage). Audit log records the complete chain from capture to promotion decision. |
+| 1 | CBRN Information or Capabilities | Out of primary scope for coding agents. Red team includes vectors testing whether the agent can be tricked into generating dangerous scripts (e.g., network attack tools, cryptominers). |
+| 2 | Confabulation | Blue team: regression scoring penalizes confabulated code (functions that reference nonexistent APIs, hallucinated library methods). Judge model checks factual correctness. |
+| 3 | Data Privacy | Red team: exfiltration probes. Blue team: audit log ensures all data flows are recorded. Capture SDK records prompts/responses but supports PII redaction configuration. |
+| 4 | Environmental | Blue team: promotion reports include cost metrics (token usage, API cost). Regression checks flag candidate models with significantly higher resource consumption. |
+| 5 | Human-AI Configuration | Red team: tests for excessive autonomy (ASI09). Blue team: verifies that human approval gates remain functional across model versions. |
+| 6 | Information Integrity | Red team: tests for misinformation in generated code (wrong APIs, insecure defaults). Blue team: correctness scoring in replay comparisons. |
+| 7 | Information Security | Core of gatelane's red team. Full OWASP Agentic Top 10 and LLM Top 10 coverage as detailed in sections 2 and 3. |
+| 8 | Intellectual Property | Red team: vectors testing whether the agent reproduces copyrighted code verbatim. Blue team: replay scoring can flag outputs with high similarity to known licensed code. |
+| 9 | Obscene, Degrading, and/or Abusive Content | Limited scope for coding agents. Red team includes vectors testing whether safety filters can be bypassed to generate harmful content through code comments or documentation. |
+| 10 | Value Chain and Component Integration | Red team: supply chain vectors (LLM03). Blue team: promotion report includes full provenance (model SHA, judge SHA, dataset lineage). Audit log records the complete chain from capture to promotion decision. |
 | 11 | Dangerous, Violent, or Hateful Content | Limited scope for coding agents. Covered to the extent that generated code or comments could contain such content. |
-| 12 | Harmful Bias and Homogenization | Mode B: regression analysis can detect systematic bias shifts between model versions (e.g., a new model systematically favoring one programming language or framework over another). |
+| 12 | Harmful Bias and Homogenization | Blue team: regression analysis can detect systematic bias shifts between model versions (e.g., a new model systematically favoring one programming language or framework over another). |
 
 ---
 
