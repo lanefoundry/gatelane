@@ -27,7 +27,7 @@ export function PromotionsPage() {
             { key: "created_at", label: "Created" },
           ]}
           rows={data.promotions as Record<string, unknown>[]}
-          emptyMessage="No promotion reports yet. Run a backtest to generate one."
+          emptyMessage="No promotion reports yet. Run a blue team backtest to generate one."
         />
       )}
     </Layout>

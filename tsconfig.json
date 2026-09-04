@@ -18,7 +18,7 @@
     { "path": "packages/shared" },
     { "path": "packages/engine" },
     { "path": "packages/mode-red-team" },
-    { "path": "packages/mode-backtest" },
+    { "path": "packages/mode-blue-team" },
     { "path": "apps/worker" }
   ]
 }
