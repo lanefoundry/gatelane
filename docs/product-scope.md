@@ -460,7 +460,7 @@ The `mode-backtest` package is renamed to `mode-blue-team`. Backtest remains a c
 | Langfuse-grade tracing (trace/span/generation) | ✅ done | Engine |
 | Session grouping | ✅ done | Engine |
 | Score attachment | ✅ done | Engine |
-| SDK integration (decorator/wrapper) | ❌ not started | Engine |
+| SDK integration (decorator/wrapper) | ✅ done | Engine |
 | Dataset freeze-slice | ✅ done | Engine |
 | Replay + compare | ✅ done | Engine |
 | Promotion primitive | ✅ done | Engine |
@@ -468,11 +468,11 @@ The `mode-backtest` package is renamed to `mode-blue-team`. Backtest remains a c
 | Anomaly detection | ✅ done | Blue team |
 | Backtest orchestration | ✅ done (as mode-backtest) | Blue team |
 | Promotion gate | ✅ done | Blue team |
-| Scoring metrics (correctness via judge) | ✅ basic (custom judge) | Eval |
-| Multi-turn scenario testing (full agent behavior) | ❌ not started | Eval |
-| Golden answer comparison | ❌ not started | Eval |
-| Pairwise comparison | ❌ not started | Eval |
-| Edge case testing | ❌ not started | Eval |
+| Scoring metrics (6 built-in + custom judge) | ✅ done | Eval |
+| Multi-turn scenario testing (full agent behavior) | ✅ done | Eval |
+| Golden answer comparison | ✅ done | Eval |
+| Pairwise comparison | ✅ done | Eval |
+| Edge case testing | ✅ done (6 categories) | Eval |
 | Assertion-based testing | ✅ done (6 operators) | Eval |
 | CI/CD integration | ❌ not started | Eval |
 | Production → test case generation | ❌ not started | Eval |
