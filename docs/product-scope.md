@@ -455,25 +455,25 @@ The `mode-backtest` package is renamed to `mode-blue-team`. Backtest remains a c
 |---|---|---|
 | Attack probes (50+ vectors, 6 categories) | ✅ done | Red team |
 | Attack runner + report generator | ✅ done | Red team |
-| Adversarial multi-turn testing | ❌ not started | Red team |
+| Adversarial multi-turn testing | ✅ done | Red team |
 | Single LLM call capture (basic) | ✅ done | Engine |
-| Langfuse-grade tracing (trace/span/generation) | ❌ not started | Engine |
-| Session grouping | ❌ not started | Engine |
-| Score attachment | ❌ not started | Engine |
+| Langfuse-grade tracing (trace/span/generation) | ✅ done | Engine |
+| Session grouping | ✅ done | Engine |
+| Score attachment | ✅ done | Engine |
 | SDK integration (decorator/wrapper) | ❌ not started | Engine |
 | Dataset freeze-slice | ✅ done | Engine |
 | Replay + compare | ✅ done | Engine |
 | Promotion primitive | ✅ done | Engine |
 | Audit log | ✅ done | Engine |
-| Anomaly detection | ❌ not started | Blue team |
+| Anomaly detection | ✅ done | Blue team |
 | Backtest orchestration | ✅ done (as mode-backtest) | Blue team |
 | Promotion gate | ✅ done | Blue team |
-| Scoring metrics (correctness, faithfulness, etc.) | ❌ not started | Eval |
+| Scoring metrics (correctness via judge) | ✅ basic (custom judge) | Eval |
 | Multi-turn scenario testing (full agent behavior) | ❌ not started | Eval |
 | Golden answer comparison | ❌ not started | Eval |
 | Pairwise comparison | ❌ not started | Eval |
 | Edge case testing | ❌ not started | Eval |
-| Assertion-based testing | ❌ not started | Eval |
+| Assertion-based testing | ✅ done (6 operators) | Eval |
 | CI/CD integration | ❌ not started | Eval |
 | Production → test case generation | ❌ not started | Eval |
 | Feature-completion trigger | ❌ not started | Eval |
