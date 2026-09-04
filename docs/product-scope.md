@@ -1,7 +1,7 @@
 # gatelane product scope
 
-> v0.4 (2026-09-03)
-> Records the product scope expansion from "red team + backtest" to "red team + blue team + eval" with Langfuse-grade tracing in the shared engine. Adds framework alignment: DeepEval, Promptfoo (eval); Garak, PyRIT, Mindgard (red team). Supersedes the two-mode (Mode A / Mode B) framing used in earlier docs.
+> v0.5 (2026-09-04)
+> Records the product scope expansion from "red team + backtest" to "red team + blue team + eval" with Langfuse-grade tracing in the shared engine. Adds framework alignment: DeepEval, Promptfoo (eval); Garak, PyRIT, Mindgard (red team). Records frontend architecture decision: TanStack Start + Hono in single Worker. Supersedes the two-mode (Mode A / Mode B) framing used in earlier docs.
 
 ## Overview
 
@@ -321,12 +321,48 @@ gatelane/
   │     ├── mode-blue-team/   — Blue team: anomaly detection, backtest, promotion gate
   │     └── mode-eval/        — Eval: scoring metrics, scenario testing, automation
   ├── apps/
-  │     ├── worker/           — Cloudflare Worker (Hono, API endpoints)
-  │     └── dashboard/        — React + Vite (trace viewer, reports, promotions)
+  │     ├── worker/           — Single Cloudflare Worker deployment
+  │     │                       ├── Hono API (/v1/*) — public REST endpoints
+  │     │                       └── TanStack Start — SSR frontend + server functions
+  │     └── dashboard/        — TanStack Start app (Router + Query + SSR)
   └── tests/
 ```
 
-### 4.1 npm package names
+### 4.1 Frontend architecture
+
+**TanStack Start (frontend) + Hono (API), single Worker deployment.**
+
+```
+Request
+  │
+  ├── /v1/*  ──→  Hono (REST API, public)
+  │                 └── D1, R2, KV bindings
+  │
+  └── /*     ──→  TanStack Start (SSR + client)
+                    ├── TanStack Router (file-based, type-safe)
+                    ├── TanStack Query (data fetching, already in use)
+                    └── Server functions (dashboard-specific queries, direct D1 access)
+```
+
+| Concern | Technology | Rationale |
+|---|---|---|
+| Public API (`/v1/*`) | Hono | Already built; REST-style; portable (Workers / Deno / Node) |
+| Frontend routing | TanStack Router | Type-safe; file-based; replaces hand-rolled hash router |
+| Data fetching | TanStack Query | Already in use (v5); cache + dedup |
+| SSR + server functions | TanStack Start (Vinxi → Nitro) | SSR streaming; direct D1 access for dashboard queries |
+| Deployment | Single Cloudflare Worker | Nitro `cloudflare-module` preset; Hono mounted as sub-app for `/v1/*` |
+
+#### Migration from current setup
+
+| Current | Target |
+|---|---|
+| React 18 + Vite SPA | TanStack Start (React 19 + SSR) |
+| Hand-rolled hash routing (`switch` on `location.hash`) | TanStack Router (file-based) |
+| `@tanstack/react-query` v5 | Kept as-is |
+| Separate dashboard + worker deployments | Single Worker deployment |
+| `src/lib/api.ts` → `fetch(VITE_API_URL)` | Server functions (direct D1) + Hono API (REST) |
+
+### 4.2 npm package names
 
 | Package | npm name | Description |
 |---|---|---|
