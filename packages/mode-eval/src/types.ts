@@ -2,6 +2,7 @@ export type MetricName =
   | "correctness"
   | "faithfulness"
   | "relevance"
+  | "coherence"
   | "hallucination"
   | "safety"
   | "format-compliance"
@@ -52,6 +53,8 @@ export interface TestCase {
 export interface ScenarioStep {
   role: "user" | "assistant" | "tool_call" | "tool_result";
   content: unknown;
+  assertions?: Assertion[];
+  metrics?: MetricName[];
 }
 
 export interface Scenario {
@@ -80,4 +83,56 @@ export interface EvalSummary {
   failed: number;
   results: EvalResult[];
   duration: number;
+}
+
+export interface GoldenComparisonResult {
+  score: number;
+  passed: boolean;
+  threshold: number;
+  differences: string[];
+  detail?: string;
+}
+
+export interface PairwiseComparisonResult {
+  winner: "A" | "B" | "tie";
+  confidence: number;
+  reasoning: string;
+}
+
+export interface ScenarioAgent {
+  execute: (messages: Array<{ role: string; content: string }>) => Promise<string>;
+}
+
+export interface StepResult {
+  stepIndex: number;
+  role: ScenarioStep["role"];
+  input: unknown;
+  output: string | null;
+  assertionsPassed: boolean;
+  scores?: MetricResult[];
+  duration: number;
+}
+
+export interface ScenarioResult {
+  id: string;
+  scenarioId: string;
+  steps: StepResult[];
+  passed: boolean;
+  duration: number;
+  createdAt: string;
+}
+
+export type EdgeCaseCategory =
+  | "empty-input"
+  | "very-long-input"
+  | "special-characters"
+  | "unicode"
+  | "injection-attempt"
+  | "boundary-values";
+
+export interface EdgeCase {
+  id: string;
+  category: EdgeCaseCategory;
+  input: string;
+  description: string;
 }
