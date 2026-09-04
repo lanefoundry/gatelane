@@ -84,11 +84,79 @@ export interface PromotionSummary {
 
 export interface AuditLogEntry {
   id: string;
-  action: "capture" | "freeze" | "replay" | "promote" | "rollback" | "eval";
+  action: "capture" | "freeze" | "replay" | "promote" | "rollback" | "eval" | "anomaly" | "multi-turn-attack";
   resourceType: string;
   resourceId: string;
   actor: string;
   detail: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface Trace {
+  id: string;
+  name: string;
+  startTime: string;
+  endTime: string | null;
+  status: "running" | "completed" | "error";
+  input: unknown;
+  output: unknown;
+  metadata: Record<string, unknown>;
+  userId: string | null;
+  sessionId: string | null;
+  createdAt: string;
+}
+
+export interface Span {
+  id: string;
+  traceId: string;
+  parentSpanId: string | null;
+  name: string;
+  startTime: string;
+  endTime: string | null;
+  input: unknown;
+  output: unknown;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface Generation {
+  id: string;
+  traceId: string;
+  parentSpanId: string | null;
+  name: string;
+  model: string;
+  prompt: ChatMessage[];
+  completion: unknown;
+  tokenCounts: TokenCounts;
+  costCents: number;
+  latencyMs: number;
+  provider: string;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface TokenCounts {
+  input: number;
+  output: number;
+  total: number;
+}
+
+export interface TracingSession {
+  id: string;
+  name: string;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface Score {
+  id: string;
+  name: string;
+  value: number;
+  traceId: string;
+  spanId: string | null;
+  generationId: string | null;
+  source: "automated" | "manual";
+  metadata: Record<string, unknown>;
   createdAt: string;
 }
 

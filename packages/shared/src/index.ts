@@ -8,5 +8,11 @@ export type {
   PromotionReport,
   PromotionSummary,
   AuditLogEntry,
+  Trace,
+  Span,
+  Generation,
+  TokenCounts,
+  TracingSession,
+  Score,
   Env,
 } from "./types.js";
