@@ -85,7 +85,7 @@ CREATE INDEX IF NOT EXISTS idx_promotions_replay_run_id ON promotions(replay_run
 
 CREATE TABLE IF NOT EXISTS audit_log (
   id TEXT PRIMARY KEY,
-  action TEXT NOT NULL CHECK(action IN ('capture', 'freeze', 'replay', 'promote', 'rollback')),
+  action TEXT NOT NULL CHECK(action IN ('capture', 'freeze', 'replay', 'promote', 'rollback', 'eval', 'anomaly')),
   resource_type TEXT NOT NULL,
   resource_id TEXT NOT NULL,
   actor TEXT NOT NULL DEFAULT 'system',
