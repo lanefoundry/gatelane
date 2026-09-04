@@ -136,3 +136,54 @@ export interface EdgeCase {
   input: string;
   description: string;
 }
+
+export type OutputFormat = "json" | "markdown" | "junit";
+
+export interface CIConfig {
+  testCases: TestCase[];
+  execute: (input: unknown) => Promise<unknown>;
+  metrics?: MetricName[];
+  threshold?: number;
+  perMetricThresholds?: Partial<Record<MetricName, number>>;
+  judge: JudgeFn;
+  outputFormat?: OutputFormat;
+  concurrency?: number;
+}
+
+export interface CIResult {
+  passed: boolean;
+  summary: EvalSummary;
+  output: string;
+  exitCode: 0 | 1;
+  failureReasons: string[];
+}
+
+export interface CaptureFilters {
+  model?: string;
+  minScore?: number;
+  maxCostCents?: number;
+}
+
+export interface GenerateTestCasesOptions {
+  datasetId?: string;
+  limit?: number;
+  filters?: CaptureFilters;
+  includeExpected?: boolean;
+}
+
+export interface FeatureGateConfig {
+  testCases: TestCase[];
+  execute: (input: unknown) => Promise<unknown>;
+  metrics: MetricName[];
+  thresholds: Record<MetricName, number>;
+  requiredAssertions?: Assertion[];
+  judge: JudgeFn;
+  concurrency?: number;
+}
+
+export interface FeatureReadiness {
+  ready: boolean;
+  blockers: string[];
+  scores: Partial<Record<MetricName, number>>;
+  timestamp: string;
+}
