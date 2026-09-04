@@ -9,3 +9,12 @@ export { createSpan, endSpan, type CreateSpanOpts } from "./span.js";
 export { createGeneration, type CreateGenerationOpts } from "./generation.js";
 export { createSession, getSession, type CreateSessionOpts } from "./session.js";
 export { attachScore, type AttachScoreOpts } from "./score.js";
+export {
+  withTracing,
+  withSpan,
+  withGeneration,
+  traced,
+  type TraceContext,
+  type GenerationResult,
+  type WithGenerationOpts,
+} from "./sdk.js";
