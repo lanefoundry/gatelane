@@ -44,7 +44,7 @@ gatelane ships that primitive.
 
 ## Modes
 
-gatelane runs on a shared engine. Two modes use it.
+gatelane runs on a shared engine. Three modes use it.
 
 ### Red team (紅隊)
 
@@ -75,6 +75,18 @@ frozen production slice → replay against new model
 ```
 
 This is the primitive that no other product ships. See [positioning](docs/positioning.md#compare-view-vs-promotion-gate) for the full comparison.
+
+### Eval (評測)
+
+Automated evaluation of LLM outputs against configurable rubrics. Supports multi-turn conversation scoring, structured output validation, and custom judge prompts. Eval runs integrate with the shared engine's scoring and tracing pipeline.
+
+```text
+prompt + response → judge model evaluation
+                        ↓
+                   structured score
+                        ↓
+              trace + score recorded
+```
 
 ## Threat model scope (v1)
 
@@ -256,7 +268,7 @@ v2 adds compliance mode on top of the same engine. Coverage is built from the v1
 |---|---|---|
 | Runtime | Cloudflare Workers | Edge, low latency, queue + DO + Workflows available |
 | Storage | D1 (metadata) + R2 (raw captures) + KV (rate limit, short window) | Same stack as groundlane and looplane |
-| Frontend | React + Vite + TanStack Query | Same stack as agent-platform (proven pattern) |
+| Frontend | React + TanStack Start (Vite 8) + Hono | Unified Cloudflare Worker: SSR + API in one |
 | Attack library | garak (NVIDIA) + PyRIT (Microsoft) + Promptfoo (OpenAI) | Don't reinvent the attack catalog |
 | License | Apache 2.0 | Same as groundlane and looplane |
 
@@ -264,7 +276,7 @@ v2 adds compliance mode on top of the same engine. Coverage is built from the v1
 
 ```bash
 pnpm install          # install all dependencies
-pnpm dev              # start Worker dev server (localhost:8787)
+pnpm dev              # start unified Worker dev server (SSR + API, localhost:8787)
 pnpm typecheck        # run TypeScript type checking (tsc -b)
 pnpm lint             # run ESLint (flat config + typescript-eslint)
 pnpm test             # run tests (vitest)
@@ -284,15 +296,15 @@ pnpm format           # auto-format with Prettier
 | GET | `/v1/promotions` | List all promotion reports |
 | GET | `/v1/promotions/:id` | Get a promotion report by ID |
 | GET | `/v1/audit-log` | List audit log entries |
+| GET | `/v1/traces` | List all traces |
+| GET | `/v1/traces/:id` | Get a trace by ID (includes spans, generations, scores) |
 
 ### Dashboard
 
-The dashboard is a React + Vite app with 6 pages (Captures, Datasets, Replay Runs, Promotions, Red Team, Audit Log). To run it locally:
+The dashboard is a TanStack Start SSR app with 8 pages (Captures, Datasets, Replay Runs, Promotions, Red Team, Audit Log, Traces, Trace Detail), served from the same unified Cloudflare Worker as the API (`apps/web/`). File-based routing, server functions via `createServerFn`, and `cloudflare:workers` for env access.
 
 ```bash
-cd apps/dashboard
-pnpm install
-pnpm dev              # starts on localhost:5173
+pnpm dev              # serves both API and dashboard on localhost:8787
 ```
 
 ### Packages
@@ -303,6 +315,7 @@ pnpm dev              # starts on localhost:5173
 | `@gatelane/engine` | Capture SDK, dataset (freeze-slice), replay, compare, audit log, promotion primitive |
 | `@gatelane/mode-red-team` | 50+ attack vectors (6 categories), runner, report generator |
 | `@gatelane/mode-blue-team` | End-to-end backtest flow (freeze → replay → compare → promote/rollback) |
+| `@gatelane/mode-eval` | Automated LLM output evaluation with configurable judge prompts |
 
 ## Repo layout
 
@@ -317,15 +330,18 @@ gatelane/
 │   ├── strategic-record.md     — why we pivoted from Agent Platform
 │   ├── threat-model.md         — OWASP / MITRE / NIST mapping
 │   ├── attack-library.md       — 50+ attack vectors reference
-│   └── architecture.md         — shared engine internals, data flow, schema
+│   ├── architecture.md         — shared engine internals, data flow, schema
+│   └── product-scope.md        — product scope and feature boundaries
 ├── packages/
 │   ├── engine/                 — capture SDK + dataset + replay + compare + audit log + promotion primitive
 │   ├── mode-red-team/          — Red team: 6 attack categories, 50+ vectors, runner, report
 │   ├── mode-blue-team/         — Blue team: dataset replay + compare + promotion gate
+│   ├── mode-eval/              — Eval: automated LLM output evaluation
 │   └── shared/                 — common types, D1 schema
 ├── apps/
-│   ├── worker/                 — Cloudflare Worker (Hono, capture endpoint + replay API)
-│   └── dashboard/              — React + Vite + TanStack Query (6 pages, hash router)
+│   ├── web/                    — Unified Cloudflare Worker (TanStack Start SSR + Hono API)
+│   ├── worker/                 — (legacy) standalone Hono Worker
+│   └── dashboard/              — (legacy) React + Vite SPA
 ├── tests/
 │   ├── unit/
 │   ├── integration/
@@ -344,6 +360,7 @@ gatelane/
 - [Threat model](docs/threat-model.md) — OWASP Agentic/LLM Top 10, MITRE ATLAS, NIST AI 600-1
 - [Attack library](docs/attack-library.md) — 50+ attack vectors reference
 - [Architecture](docs/architecture.md) — system architecture, data flow, promotion primitive
+- [Product scope](docs/product-scope.md) — product scope and feature boundaries
 
 ## Status
 
@@ -357,7 +374,10 @@ gatelane/
 | Worker API (capture endpoint + replay API) | ✅ done (2026-09-03) |
 | Red team (紅隊, 50+ attacks) | ✅ done (2026-09-03) — 6 categories, 50+ vectors, runner, report |
 | Blue team (藍隊, backtest + promotion gate) | ✅ done (2026-09-03) |
-| Dashboard (attack report + promotion report UI) | ✅ done (2026-09-03) — 6 pages, hash router, TanStack Query |
+| Dashboard (attack report + promotion report UI) | ✅ done (2026-09-03) — 8 pages, TanStack Start SSR, file-based routing |
+| Frontend migration: TanStack Start + Hono unified Worker | ✅ done (2026-09-04) |
+| Eval mode (評測) | ✅ done (2026-09-04) |
+| Trace viewer (timeline + scores) | ✅ done (2026-09-04) |
 | Docs: threat-model.md | ✅ done (2026-09-03) |
 | Docs: attack-library.md | ✅ done (2026-09-03) |
 | Docs: architecture.md | ✅ done (2026-09-03) |

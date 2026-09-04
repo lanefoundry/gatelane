@@ -44,7 +44,7 @@ gatelane 提供這個原語。
 
 ## 模式
 
-gatelane 在共用引擎上運行。兩種模式使用它。
+gatelane 在共用引擎上運行。三種模式使用它。
 
 ### 紅隊 — "能被攻破嗎？"
 
@@ -75,6 +75,18 @@ gatelane 在共用引擎上運行。兩種模式使用它。
 ```
 
 這是其他產品都沒有提供的原語。詳見 [positioning](docs/positioning.md#compare-view-vs-promotion-gate)。
+
+### 評測 — "輸出品質夠好嗎？"
+
+自動化評估 LLM 輸出，支援可配置的評分標準。支援多輪對話評分、結構化輸出驗證和自訂裁判 prompt。評測執行整合共用引擎的評分和追蹤管線。
+
+```text
+prompt + 回應 → 裁判模型評估
+                    ↓
+               結構化分數
+                    ↓
+          追蹤 + 分數記錄
+```
 
 ## 威脅模型範圍（v1）
 
@@ -256,7 +268,7 @@ v2 在相同引擎上添加合規模式。涵蓋範圍由 v1 攻擊庫 + OWASP A
 |---|---|---|
 | 執行時 | Cloudflare Workers | 邊緣運算、低延遲、可用 queue + DO + Workflows |
 | 儲存 | D1（中繼資料）+ R2（原始捕獲）+ KV（速率限制、短期視窗） | 與 groundlane 和 looplane 相同堆疊 |
-| 前端 | React + Vite + TanStack Query | 與 agent-platform 相同堆疊（已驗證的模式） |
+| 前端 | React + TanStack Start (Vite 8) + Hono | 統一 Cloudflare Worker：SSR + API 合一 |
 | 攻擊庫 | garak (NVIDIA) + PyRIT (Microsoft) + Promptfoo (OpenAI) | 不重新發明攻擊目錄 |
 | 授權 | Apache 2.0 | 與 groundlane 和 looplane 相同 |
 
@@ -264,7 +276,7 @@ v2 在相同引擎上添加合規模式。涵蓋範圍由 v1 攻擊庫 + OWASP A
 
 ```bash
 pnpm install          # 安裝所有相依套件
-pnpm dev              # 啟動 Worker 開發伺服器（localhost:8787）
+pnpm dev              # 啟動統一 Worker 開發伺服器（SSR + API，localhost:8787）
 pnpm typecheck        # 執行 TypeScript 型別檢查（tsc -b）
 pnpm lint             # 執行 ESLint（flat config + typescript-eslint）
 pnpm test             # 執行測試（vitest）
@@ -284,15 +296,15 @@ pnpm format           # 以 Prettier 自動格式化
 | GET | `/v1/promotions` | 列出所有升級報告 |
 | GET | `/v1/promotions/:id` | 取得指定升級報告 |
 | GET | `/v1/audit-log` | 列出稽核日誌項目 |
+| GET | `/v1/traces` | 列出所有追蹤 |
+| GET | `/v1/traces/:id` | 取得指定追蹤（含 spans、generations、scores） |
 
 ### 儀表板
 
-儀表板是一個 React + Vite 應用，包含 6 個頁面（捕獲、資料集、重播執行、升級報告、紅隊、稽核日誌）。本地啟動方式：
+儀表板是一個 TanStack Start SSR 應用，包含 8 個頁面（捕獲、資料集、重播執行、升級報告、紅隊、稽核日誌、追蹤列表、追蹤詳情），與 API 一起在同一個統一 Cloudflare Worker 中提供（`apps/web/`）。使用檔案式路由、透過 `createServerFn` 實作伺服器函式、透過 `cloudflare:workers` 存取環境變數。
 
 ```bash
-cd apps/dashboard
-pnpm install
-pnpm dev              # 啟動於 localhost:5173
+pnpm dev              # 在 localhost:8787 同時提供 API 和儀表板
 ```
 
 ### 套件
@@ -303,6 +315,7 @@ pnpm dev              # 啟動於 localhost:5173
 | `@gatelane/engine` | 捕獲 SDK、資料集（freeze-slice）、重播、比較、稽核日誌、升級原語 |
 | `@gatelane/mode-red-team` | 50+ 攻擊向量（6 類別）、執行器、報告產生器 |
 | `@gatelane/mode-blue-team` | 端到端回測流程（凍結 → 重播 → 比較 → 升級/回滾） |
+| `@gatelane/mode-eval` | 自動化 LLM 輸出評估，可配置裁判 prompt |
 
 ## 儲存庫結構
 
@@ -318,15 +331,18 @@ gatelane/
 │   ├── strategic-record.md     — 為什麼從 Agent Platform 轉向
 │   ├── threat-model.md         — OWASP / MITRE / NIST 對照
 │   ├── attack-library.md       — 50+ 攻擊向量參考
-│   └── architecture.md         — 共用引擎內部、資料流、schema
+│   ├── architecture.md         — 共用引擎內部、資料流、schema
+│   └── product-scope.md        — 產品範圍與功能邊界
 ├── packages/
 │   ├── engine/                 — 捕獲 SDK + 資料集 + 重播 + 比較 + 稽核日誌 + 升級原語
 │   ├── mode-red-team/          — 紅隊：6 攻擊類別、50+ 向量、執行器、報告
 │   ├── mode-blue-team/         — 藍隊：資料集重播 + 比較 + 升級閘門
+│   ├── mode-eval/              — 評測：自動化 LLM 輸出評估
 │   └── shared/                 — 共用型別、D1 schema
 ├── apps/
-│   ├── worker/                 — Cloudflare Worker（Hono、捕獲端點 + 重播 API）
-│   └── dashboard/              — React + Vite + TanStack Query（6 頁面、hash router）
+│   ├── web/                    — 統一 Cloudflare Worker（TanStack Start SSR + Hono API）
+│   ├── worker/                 — （舊版）獨立 Hono Worker
+│   └── dashboard/              — （舊版）React + Vite SPA
 ├── tests/
 │   ├── unit/
 │   ├── integration/
@@ -345,6 +361,7 @@ gatelane/
 - [Threat model](docs/threat-model.md) — OWASP Agentic/LLM Top 10、MITRE ATLAS、NIST AI 600-1
 - [Attack library](docs/attack-library.md) — 50+ 攻擊向量參考
 - [Architecture](docs/architecture.md) — 系統架構、資料流、升級原語
+- [Product scope](docs/product-scope.md) — 產品範圍與功能邊界
 
 ## 狀態
 
@@ -358,7 +375,10 @@ gatelane/
 | Worker API（捕獲端點 + 重播 API） | ✅ 完成 (2026-09-03) |
 | 紅隊（50+ 攻擊） | ✅ 完成 (2026-09-03) — 6 類別、50+ 向量、執行器、報告 |
 | 藍隊（回測 + 升級閘門） | ✅ 完成 (2026-09-03) |
-| 儀表板（攻擊報告 + 升級報告 UI） | ✅ 完成 (2026-09-03) — 6 頁面、hash router、TanStack Query |
+| 儀表板（攻擊報告 + 升級報告 UI） | ✅ 完成 (2026-09-03) — 8 頁面、TanStack Start SSR、檔案式路由 |
+| 前端遷移：TanStack Start + Hono 統一 Worker | ✅ 完成 (2026-09-04) |
+| 評測模式 | ✅ 完成 (2026-09-04) |
+| 追蹤檢視器（時間軸 + 分數） | ✅ 完成 (2026-09-04) |
 | 文件：threat-model.md | ✅ 完成 (2026-09-03) |
 | 文件：attack-library.md | ✅ 完成 (2026-09-03) |
 | 文件：architecture.md | ✅ 完成 (2026-09-03) |
