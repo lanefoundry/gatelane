@@ -83,7 +83,7 @@ importers:
         specifier: ^4.20250408.0
         version: 4.20260702.1
 
-  packages/mode-backtest:
+  packages/mode-blue-team:
     dependencies:
       '@gatelane/engine':
         specifier: workspace:*
