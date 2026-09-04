@@ -1,83 +1,144 @@
 # Agent Setup Prompt
 
-> Copy-paste this prompt to your AI coding assistant (Claude Code, Cursor, Copilot, etc.)
+> Copy-paste the prompt below to your AI coding assistant (Claude Code, Cursor, Copilot, etc.)
 > to quickly integrate gatelane into your project.
+>
+> There are two roles:
+> - **Operator (部署者)** — clone and deploy gatelane Worker once. Gets dashboard + API.
+> - **Integrator (整合者)** — call the HTTP API from your agent. No clone needed.
 
 ---
 
-## Prompt
+## For Integrators — add gatelane to your existing agent
 
-```
-I want to integrate gatelane — a pre-production safety and eval gate for AI agents.
-gatelane has three modes: Red Team (attack probing), Blue Team (backtest upgrades),
-and Eval (automated LLM output evaluation). It runs on Cloudflare Workers (D1 + R2 + KV).
+> This is the common case. Your team already deployed a gatelane Worker.
+> You just need to send LLM calls to it.
 
-Here's what I need you to do:
+````
+I want to integrate with gatelane — a pre-production safety and eval gate for AI agents.
+A gatelane Worker is already deployed. I need to instrument my agent to send data to it.
 
-### 1. Install
+### 1. Capture every LLM call (HTTP — works from any runtime)
 
-Add gatelane as a dependency. The packages are:
-- @gatelane/engine — capture SDK, dataset, replay, compare, tracing, promotion
-- @gatelane/mode-red-team — 50+ attack vectors, runner, report generator
-- @gatelane/mode-blue-team — backtest flow (freeze → replay → compare → promote/rollback)
-- @gatelane/mode-eval — automated LLM output evaluation with judge prompts
-- @gatelane/shared — shared types and D1 schema
+After each LLM call, POST the prompt + response to gatelane:
 
-### 2. Capture LLM calls
-
-Wrap every LLM call with gatelane's capture SDK. Two options:
-
-**Option A: SDK (same Worker / same process)**
 ```ts
-import { capture } from "@gatelane/engine";
+const GATELANE_URL = "https://gatelane.your-team.workers.dev"; // your deployed URL
+const GATELANE_TOKEN = process.env.GATELANE_CAPTURE_TOKEN;
 
-const { response, record } = await capture(env, {
-  prompt: [{ role: "user", content: userInput }],
-  model: "gpt-4o",
-  metadata: { agentVersion: "1.0.0" },
-}, async () => {
-  return await myLlmCall(userInput);
+async function captureToGatelane(
+  prompt: Array<{ role: string; content: string }>,
+  model: string,
+  response: unknown,
+  metadata?: Record<string, unknown>,
+) {
+  await fetch(`${GATELANE_URL}/v1/capture`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${GATELANE_TOKEN}`,
+    },
+    body: JSON.stringify({ prompt, model, response, metadata }),
+  });
+}
+```
+
+Call this after every LLM call in my agent:
+
+```ts
+const llmResponse = await callMyLLM(messages, "gpt-4o");
+await captureToGatelane(messages, "gpt-4o", llmResponse, {
+  agentVersion: "1.0.0",
+  feature: "chat",
+  userId: currentUser.id,
 });
 ```
 
-**Option B: HTTP API (any runtime)**
-```ts
-await fetch("https://your-gatelane.workers.dev/v1/capture", {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-    Authorization: "Bearer YOUR_CAPTURE_TOKEN",
-  },
-  body: JSON.stringify({
-    prompt: [{ role: "user", content: userInput }],
-    model: "gpt-4o",
-    response: llmResponse,
-    metadata: { agentVersion: "1.0.0" },
-  }),
-});
+### 2. View results
+
+Open the gatelane dashboard (same URL as the API) in a browser to see:
+- Captured LLM calls
+- Datasets (frozen production slices)
+- Replay runs and promotion reports
+- Red team vulnerability reports
+- Audit log
+- Traces with timeline view
+
+### 3. Query the API
+
+```
+GET /v1/datasets          — list frozen datasets
+GET /v1/replay-runs       — list backtest runs
+GET /v1/promotions        — list promotion reports (promote/rollback decisions)
+GET /v1/audit-log         — list audit events
+GET /v1/traces            — list traces
+GET /v1/traces/:id        — get trace detail (spans, generations, scores)
 ```
 
-### 3. Add tracing (optional but recommended)
+### Key constraints
+- The capture token must be >= 32 characters
+- POST body: { prompt: [{role, content}], model: string, response: any, metadata?: {} }
+- Response: { id: string, traceId: string }
+- All endpoints return JSON
 
-Use the tracing SDK to instrument your agent pipeline:
-```ts
-import { traced, withGeneration } from "@gatelane/engine";
+### Environment variable needed in my project
+```
+GATELANE_CAPTURE_TOKEN=<the token from the gatelane operator>
+```
+````
 
-const { trace, results } = await traced(env, "my-pipeline")
-  .span("step-1", async () => { /* ... */ })
-  .span("step-2", async (ctx) => {
-    const gen = withGeneration(env, {
-      traceId: ctx.traceId,
-      name: "llm-call",
-      model: "gpt-4o",
-      parentSpanId: ctx.spanId,
-    }, async (messages) => myLlmCall(messages));
-    return (await gen(messages)).completion;
-  })
-  .run(input);
+---
+
+## For Operators — deploy gatelane
+
+> Do this once per team. Everyone else uses the HTTP API above.
+
+````
+I want to deploy gatelane — a pre-production safety and eval gate for AI agents.
+It runs as a Cloudflare Worker with D1 + R2 + KV storage.
+
+### 1. Clone and install
+
+```bash
+git clone https://github.com/lanefoundry/gatelane.git
+cd gatelane
+pnpm install
+cp .env.example .env
 ```
 
-### 4. Run red team scan
+### 2. Configure .env
+
+```bash
+GATELANE_JUDGE_PROVIDER=openai    # or anthropic, google
+GATELANE_JUDGE_API_KEY=sk-...
+GATELANE_JUDGE_MODEL=gpt-4o
+GATELANE_CAPTURE_TOKEN=$(openssl rand -hex 32)
+```
+
+### 3. Create Cloudflare resources
+
+```bash
+pnpm exec wrangler login
+pnpm exec wrangler d1 create gatelane
+pnpm exec wrangler r2 bucket create gatelane-captures
+pnpm exec wrangler kv namespace create GATELANE_KV
+# Paste the returned IDs into wrangler.toml
+```
+
+### 4. Deploy
+
+```bash
+pnpm secrets:setup
+pnpm run deploy
+```
+
+### 5. Local development
+
+```bash
+pnpm dev    # starts unified Worker at localhost:8787 (API + dashboard)
+```
+
+### 6. Run red team scan against an agent
 
 ```ts
 import { allVectors, runAttack, generateReport } from "@gatelane/mode-red-team";
@@ -89,9 +150,10 @@ const results = await Promise.all(
   })),
 );
 const report = generateReport(results, ["my-agent"]);
+// report contains: successful attacks, payloads, evidence, patch recommendations
 ```
 
-### 5. Set up backtest upgrade gate
+### 7. Run backtest upgrade gate
 
 ```ts
 import { backtest } from "@gatelane/mode-blue-team";
@@ -102,21 +164,21 @@ const report = await backtest(env, {
   baselineModel: "gpt-4o",
   threshold: 0.02,
   judge: async (prompt, response) => { /* return 0-1 score */ },
-  execute: async (prompt, model) => { /* call LLM */ },
+  execute: async (prompt, model) => { /* call LLM, return response */ },
 });
-// report.decision === "promote" | "rollback"
+// report.decision === "promote" → route to new model
+// report.decision === "rollback" → keep baseline
 ```
 
-### 6. Environment variables needed
+### Architecture
+- apps/web/ — unified Cloudflare Worker (TanStack Start SSR dashboard + Hono API)
+- packages/engine/ — capture SDK, dataset, replay, compare, tracing, promotion
+- packages/mode-red-team/ — 50+ attack vectors, runner, report generator
+- packages/mode-blue-team/ — backtest flow (freeze → replay → compare → promote/rollback)
+- packages/mode-eval/ — automated LLM output evaluation
+- packages/shared/ — TypeScript types and D1 schema
 
-```
-GATELANE_JUDGE_PROVIDER=openai    # or anthropic, google
-GATELANE_JUDGE_API_KEY=sk-...
-GATELANE_JUDGE_MODEL=gpt-4o
-GATELANE_CAPTURE_TOKEN=<random 64-char hex>
-```
-
-### 7. Cloudflare bindings (wrangler.toml)
+### Cloudflare bindings (wrangler.toml)
 
 ```toml
 [[d1_databases]]
@@ -132,16 +194,4 @@ bucket_name = "gatelane-captures"
 binding = "GATELANE_KV"
 id = "your-kv-id"
 ```
-
-### Key constraints
-- Captures are stored in D1 (metadata) + R2 (raw JSON)
-- The capture token must be >= 32 characters
-- Red team's runAttack sends POST to target URL with { messages: [...] } body
-- Backtest judge function must return a number between 0 and 1
-- All types are in @gatelane/shared (CaptureRecord, Dataset, ReplayRun, PromotionReport, etc.)
-
-### Reference
-- Repo: https://github.com/lanefoundry/gatelane
-- Examples: see examples/ directory in the repo
-- Dashboard: TanStack Start SSR app served from apps/web/ on the same Worker
-```
+````

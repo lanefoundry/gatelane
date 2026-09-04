@@ -115,13 +115,22 @@ gatelane is **one primitive the rest of the market does not ship**: promotion-on
 > [!NOTE]
 > The 5–6 week demo target ships the capture SDK, dataset, replay, compare, and promotion primitive end-to-end. The quick start below is the v0.1 demo workflow. Production-grade features (canary orchestrator, signed reports, audit export) ship in v0.2.
 
-### Requirements
+gatelane is self-hosted. There are two roles:
+
+- **Operator** — deploy the gatelane Worker once (clone this repo). Gets the dashboard + API.
+- **Integrator** — call the HTTP API from your agent. **No clone needed.** Just `POST` to the deployed URL.
+
+> Using an AI coding assistant? Copy the prompt from [docs/agent-setup-prompt.md](docs/agent-setup-prompt.md) for step-by-step integration instructions.
+
+### For operators: deploy gatelane
+
+#### Requirements
 
 - Node.js 22+, pnpm 10, Git
 - A Cloudflare account (for production deployment)
 - An LLM API key for the eval / backtest judge model (OpenAI, Anthropic, Gemini, or self-hosted)
 
-### Install
+#### Install
 
 ```bash
 git clone https://github.com/lanefoundry/gatelane.git
@@ -148,11 +157,11 @@ Start the local dev server:
 pnpm dev
 ```
 
-gatelane now exposes a local API on `http://localhost:8787`.
+gatelane now serves both the API and the dashboard on `http://localhost:8787`.
 
-### Capture a single LLM call
+### For integrators: capture LLM calls
 
-One-line integration on the agent side via the Worker API:
+No clone needed — just `POST` to the deployed gatelane URL after each LLM call:
 
 ```typescript
 const res = await fetch("http://localhost:8787/v1/capture", {

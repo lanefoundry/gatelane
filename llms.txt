@@ -2,7 +2,7 @@
 
 > Pre-production safety and eval gate for AI agents.
 
-gatelane is a Cloudflare Workers application that provides three modes for AI agent safety:
+gatelane is a self-hosted Cloudflare Workers application that provides three modes for AI agent safety. **Operators** deploy it once (clone + `pnpm deploy`); **integrators** just POST to the deployed URL — no clone needed.
 
 1. **Red Team** — Run 50+ attack vectors (prompt injection, tool abuse, memory poisoning, etc.) against an agent endpoint. Output: vulnerability report with evidence and patch recommendations.
 2. **Blue Team** — Freeze a production traffic slice, replay it against a new model version, and get a signed promote/rollback decision based on score delta vs threshold.

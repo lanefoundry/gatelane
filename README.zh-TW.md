@@ -115,13 +115,22 @@ gatelane 是**市場上其他產品都沒有提供的一個原語**：基於回�
 > [!NOTE]
 > 5-6 週的 demo 目標會端到端交付捕獲 SDK、資料集、重播、比較和升級原語。以下快速開始是 v0.1 demo 工作流程。生產級功能（canary 編排器、簽章報告、稽核匯出）在 v0.2 出貨。
 
-### 需求
+gatelane 是自部署服務。有兩種角色：
+
+- **部署者** — 部署 gatelane Worker 一次（需要 clone 此 repo）。取得儀表板 + API。
+- **整合者** — 從你的代理呼叫 HTTP API。**不需要 clone。** 只要 `POST` 到已部署的 URL。
+
+> 使用 AI 編碼助手？複製 [docs/agent-setup-prompt.md](docs/agent-setup-prompt.md) 中的 prompt 即可取得逐步整合指引。
+
+### 部署者：部署 gatelane
+
+#### 需求
 
 - Node.js 22+、pnpm 10、Git
 - Cloudflare 帳戶（用於生產部署）
 - 用於評估/回測裁判模型的 LLM API 金鑰（OpenAI、Anthropic、Gemini 或自建）
 
-### 安裝
+#### 安裝
 
 ```bash
 git clone https://github.com/lanefoundry/gatelane.git
@@ -148,11 +157,11 @@ GATELANE_CAPTURE_TOKEN=$(openssl rand -hex 32)
 pnpm dev
 ```
 
-gatelane 現在在 `http://localhost:8787` 上提供本地 API。
+gatelane 現在在 `http://localhost:8787` 同時提供 API 和儀表板。
 
-### 捕獲單一 LLM 呼叫
+### 整合者：捕獲 LLM 呼叫
 
-透過 Worker API 整合到代理端：
+不需要 clone — 在每次 LLM 呼叫後 `POST` 到已部署的 gatelane URL：
 
 ```typescript
 const res = await fetch("http://localhost:8787/v1/capture", {
