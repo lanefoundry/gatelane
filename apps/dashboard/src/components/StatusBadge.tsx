@@ -3,8 +3,11 @@ const COLORS: Record<string, { bg: string; text: string }> = {
   running: { bg: "#dbeafe", text: "#1e40af" },
   pending: { bg: "#fef9c3", text: "#854d0e" },
   failed: { bg: "#fee2e2", text: "#991b1b" },
+  error: { bg: "#fee2e2", text: "#991b1b" },
   promote: { bg: "#dcfce7", text: "#166534" },
   rollback: { bg: "#fee2e2", text: "#991b1b" },
+  automated: { bg: "#e0e7ff", text: "#3730a3" },
+  manual: { bg: "#f3f4f6", text: "#374151" },
 };
 
 export function StatusBadge({ status }: { status: string }) {

@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 
 const NAV_ITEMS = [
   { label: "Captures", href: "#captures" },
+  { label: "Traces", href: "#traces" },
   { label: "Datasets", href: "#datasets" },
   { label: "Replay Runs", href: "#replay-runs" },
   { label: "Promotions", href: "#promotions" },

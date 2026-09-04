@@ -96,3 +96,72 @@ CREATE TABLE IF NOT EXISTS audit_log (
 CREATE INDEX IF NOT EXISTS idx_audit_log_action ON audit_log(action);
 CREATE INDEX IF NOT EXISTS idx_audit_log_resource ON audit_log(resource_type, resource_id);
 CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log(created_at);
+
+CREATE TABLE IF NOT EXISTS traces (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  start_time TEXT NOT NULL,
+  end_time TEXT,
+  status TEXT NOT NULL DEFAULT 'running' CHECK(status IN ('running', 'completed', 'error')),
+  input TEXT,              -- JSON
+  output TEXT,             -- JSON
+  metadata TEXT NOT NULL DEFAULT '{}', -- JSON
+  user_id TEXT,
+  session_id TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_traces_status ON traces(status);
+CREATE INDEX IF NOT EXISTS idx_traces_session_id ON traces(session_id);
+CREATE INDEX IF NOT EXISTS idx_traces_created_at ON traces(created_at);
+
+CREATE TABLE IF NOT EXISTS spans (
+  id TEXT PRIMARY KEY,
+  trace_id TEXT NOT NULL REFERENCES traces(id),
+  parent_span_id TEXT,
+  name TEXT NOT NULL,
+  start_time TEXT NOT NULL,
+  end_time TEXT,
+  input TEXT,              -- JSON
+  output TEXT,             -- JSON
+  metadata TEXT NOT NULL DEFAULT '{}', -- JSON
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_spans_trace_id ON spans(trace_id);
+CREATE INDEX IF NOT EXISTS idx_spans_parent_span_id ON spans(parent_span_id);
+
+CREATE TABLE IF NOT EXISTS generations (
+  id TEXT PRIMARY KEY,
+  trace_id TEXT NOT NULL REFERENCES traces(id),
+  parent_span_id TEXT,
+  name TEXT NOT NULL,
+  model TEXT NOT NULL,
+  prompt TEXT NOT NULL,        -- JSON array of ChatMessage
+  completion TEXT,             -- JSON
+  token_input INTEGER NOT NULL DEFAULT 0,
+  token_output INTEGER NOT NULL DEFAULT 0,
+  token_total INTEGER NOT NULL DEFAULT 0,
+  cost_cents REAL NOT NULL DEFAULT 0,
+  latency_ms INTEGER NOT NULL DEFAULT 0,
+  provider TEXT NOT NULL DEFAULT '',
+  metadata TEXT NOT NULL DEFAULT '{}', -- JSON
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_generations_trace_id ON generations(trace_id);
+CREATE INDEX IF NOT EXISTS idx_generations_parent_span_id ON generations(parent_span_id);
+
+CREATE TABLE IF NOT EXISTS scores (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  value REAL NOT NULL,
+  trace_id TEXT NOT NULL REFERENCES traces(id),
+  span_id TEXT,
+  generation_id TEXT,
+  source TEXT NOT NULL DEFAULT 'automated' CHECK(source IN ('automated', 'manual')),
+  metadata TEXT NOT NULL DEFAULT '{}', -- JSON
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_scores_trace_id ON scores(trace_id);

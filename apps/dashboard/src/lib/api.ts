@@ -33,3 +33,11 @@ export function getPromotion(id: string) {
 export function getAuditLog() {
   return fetchJson<{ entries: unknown[] }>("/v1/audit-log");
 }
+
+export function getTraces() {
+  return fetchJson<{ traces: Record<string, unknown>[] }>("/v1/traces");
+}
+
+export function getTrace(id: string) {
+  return fetchJson<Record<string, unknown>>(`/v1/traces/${id}`);
+}

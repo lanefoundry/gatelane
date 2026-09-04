@@ -6,6 +6,8 @@ import { ReplayRunsPage } from "./pages/ReplayRuns";
 import { PromotionsPage } from "./pages/Promotions";
 import { RedTeamPage } from "./pages/RedTeam";
 import { AuditLogPage } from "./pages/AuditLog";
+import { TracesPage } from "./pages/Traces";
+import { TraceDetailPage } from "./pages/TraceDetail";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { refetchOnWindowFocus: false, retry: 1 } },
@@ -20,8 +22,14 @@ function Router() {
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
 
+  if (hash.startsWith("#traces/")) {
+    const traceId = hash.slice("#traces/".length);
+    return <TraceDetailPage traceId={traceId} />;
+  }
+
   switch (hash) {
     case "#captures": return <CapturesPage />;
+    case "#traces": return <TracesPage />;
     case "#datasets": return <DatasetsPage />;
     case "#replay-runs": return <ReplayRunsPage />;
     case "#promotions": return <PromotionsPage />;
