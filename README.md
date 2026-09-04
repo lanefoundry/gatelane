@@ -342,10 +342,12 @@ gatelane/
 │   ├── web/                    — Unified Cloudflare Worker (TanStack Start SSR + Hono API)
 │   ├── worker/                 — (legacy) standalone Hono Worker
 │   └── dashboard/              — (legacy) React + Vite SPA
+├── examples/                   — runnable integration examples
 ├── tests/
 │   ├── unit/
 │   ├── integration/
 │   └── e2e/
+├── llms.txt                    — AI-readable project summary
 ├── schema/d1.sql               — D1 database schema (via packages/shared)
 ├── package.json                — pnpm workspace root
 ├── pnpm-workspace.yaml
@@ -361,6 +363,8 @@ gatelane/
 - [Attack library](docs/attack-library.md) — 50+ attack vectors reference
 - [Architecture](docs/architecture.md) — system architecture, data flow, promotion primitive
 - [Product scope](docs/product-scope.md) — product scope and feature boundaries
+- [Agent setup prompt](docs/agent-setup-prompt.md) — copy-paste prompt for AI coding assistants
+- [Examples](examples/) — runnable integration examples
 
 ## Status
 

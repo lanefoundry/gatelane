@@ -1,0 +1,93 @@
+# gatelane
+
+> Pre-production safety and eval gate for AI agents.
+
+gatelane is a Cloudflare Workers application that provides three modes for AI agent safety:
+
+1. **Red Team** — Run 50+ attack vectors (prompt injection, tool abuse, memory poisoning, etc.) against an agent endpoint. Output: vulnerability report with evidence and patch recommendations.
+2. **Blue Team** — Freeze a production traffic slice, replay it against a new model version, and get a signed promote/rollback decision based on score delta vs threshold.
+3. **Eval** — Automated LLM output evaluation with configurable judge prompts, multi-turn scoring, golden answer comparison, and pairwise comparison.
+
+## Packages
+
+- `@gatelane/engine` — Capture SDK, dataset (freeze-slice), replay, compare, audit log, promotion, tracing (traces/spans/generations/scores)
+- `@gatelane/mode-red-team` — 50+ attack vectors across 6 categories, attack runner, report generator, multi-turn attack scenarios
+- `@gatelane/mode-blue-team` — End-to-end backtest flow (freeze → replay → compare → promote/rollback), anomaly detection
+- `@gatelane/mode-eval` — Scorer, assertions, evaluator, metrics, golden/pairwise comparison, scenario runner, edge case generator, CI integration, formatters (JSON/Markdown/JUnit)
+- `@gatelane/shared` — Shared TypeScript types (CaptureRecord, Dataset, ReplayRun, PromotionReport, Trace, Span, Generation, Score, Env) and D1 schema
+
+## Stack
+
+- Runtime: Cloudflare Workers
+- Storage: D1 (metadata) + R2 (raw captures) + KV (rate limit, short window)
+- Frontend: React + TanStack Start (Vite 8) + Hono, unified Worker (SSR + API)
+- 8 dashboard pages: Captures, Datasets, Replay Runs, Promotions, Red Team, Audit Log, Traces, Trace Detail
+
+## API Endpoints
+
+- POST /v1/capture — Capture an LLM call (requires Bearer token)
+- GET /v1/datasets, /v1/datasets/:id — List/get datasets
+- GET /v1/replay-runs, /v1/replay-runs/:id — List/get replay runs
+- GET /v1/promotions, /v1/promotions/:id — List/get promotion reports
+- GET /v1/audit-log — List audit log entries
+- GET /v1/traces, /v1/traces/:id — List/get traces (with spans, generations, scores)
+
+## Quick Integration
+
+### Capture (SDK)
+```typescript
+import { capture } from "@gatelane/engine";
+const { response, record } = await capture(env, {
+  prompt: [{ role: "user", content: input }],
+  model: "gpt-4o",
+}, async () => myLlmCall(input));
+```
+
+### Capture (HTTP)
+```typescript
+await fetch("https://your-gatelane.workers.dev/v1/capture", {
+  method: "POST",
+  headers: { "Content-Type": "application/json", Authorization: "Bearer TOKEN" },
+  body: JSON.stringify({ prompt: [...], model: "gpt-4o", response: llmResponse }),
+});
+```
+
+### Red Team
+```typescript
+import { allVectors, runAttack, generateReport } from "@gatelane/mode-red-team";
+const results = await Promise.all(allVectors.map(v => runAttack(v, { url: "http://agent/chat", name: "my-agent" })));
+const report = generateReport(results, ["my-agent"]);
+```
+
+### Backtest
+```typescript
+import { backtest } from "@gatelane/mode-blue-team";
+const report = await backtest(env, {
+  window: "7d", candidateModel: "gpt-4.1", baselineModel: "gpt-4o", threshold: 0.02,
+  judge: async (prompt, response) => scoreFromLlm(prompt, response),
+  execute: async (prompt, model) => callLlm(prompt, model),
+});
+```
+
+### Tracing
+```typescript
+import { traced, withGeneration } from "@gatelane/engine";
+const { trace } = await traced(env, "pipeline")
+  .span("step-1", async () => parseInput())
+  .span("step-2", async (ctx) => {
+    const gen = withGeneration(env, { traceId: ctx.traceId, name: "llm", model: "gpt-4o", parentSpanId: ctx.spanId }, callLlm);
+    return (await gen(messages)).completion;
+  })
+  .run(input);
+```
+
+## Environment Variables
+- GATELANE_JUDGE_PROVIDER — openai | anthropic | google
+- GATELANE_JUDGE_API_KEY — LLM API key for eval/backtest judge
+- GATELANE_JUDGE_MODEL — Judge model name (e.g. gpt-4o)
+- GATELANE_CAPTURE_TOKEN — Bearer token for capture API (>= 32 chars)
+
+## Cloudflare Bindings
+- DB: D1Database — metadata storage
+- CAPTURES: R2Bucket — raw capture JSON storage
+- GATELANE_KV: KVNamespace — rate limiting, short-lived data

@@ -343,10 +343,12 @@ gatelane/
 │   ├── web/                    — 統一 Cloudflare Worker（TanStack Start SSR + Hono API）
 │   ├── worker/                 — （舊版）獨立 Hono Worker
 │   └── dashboard/              — （舊版）React + Vite SPA
+├── examples/                   — 可執行的整合範例
 ├── tests/
 │   ├── unit/
 │   ├── integration/
 │   └── e2e/
+├── llms.txt                    — AI 可讀的專案摘要
 ├── schema/d1.sql               — D1 資料庫 schema（位於 packages/shared）
 ├── package.json                — pnpm workspace 根目錄
 ├── pnpm-workspace.yaml
@@ -362,6 +364,8 @@ gatelane/
 - [Attack library](docs/attack-library.md) — 50+ 攻擊向量參考
 - [Architecture](docs/architecture.md) — 系統架構、資料流、升級原語
 - [Product scope](docs/product-scope.md) — 產品範圍與功能邊界
+- [Agent setup prompt](docs/agent-setup-prompt.md) — 給 AI 編碼助手的快速設定 prompt
+- [Examples](examples/) — 可執行的整合範例
 
 ## 狀態
 
