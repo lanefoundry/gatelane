@@ -1,13 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
-import { getEvent } from "vinxi/http";
-import type { Env } from "@gatelane/shared";
+import { env } from "cloudflare:workers";
 import { DataTable } from "../components/DataTable";
 import { StatusBadge } from "../components/StatusBadge";
 
 const fetchReplayRuns = createServerFn({ method: "GET" }).handler(async () => {
-  const event = getEvent();
-  const env = (event.context as Record<string, any>).cloudflare.env as Env;
   const result = await env.DB.prepare(
     "SELECT * FROM replay_runs ORDER BY created_at DESC LIMIT 50",
   ).all();

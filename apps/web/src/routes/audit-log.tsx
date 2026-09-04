@@ -1,12 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
-import { getEvent } from "vinxi/http";
-import type { Env } from "@gatelane/shared";
+import { env } from "cloudflare:workers";
 import { DataTable } from "../components/DataTable";
 
 const fetchAuditLog = createServerFn({ method: "GET" }).handler(async () => {
-  const event = getEvent();
-  const env = (event.context as Record<string, any>).cloudflare.env as Env;
   const result = await env.DB.prepare(
     "SELECT * FROM audit_log ORDER BY created_at DESC LIMIT 100",
   ).all();

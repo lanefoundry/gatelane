@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
-import { getEvent } from "vinxi/http";
-import type { Env } from "@gatelane/shared";
+import { env } from "cloudflare:workers";
 import { StatusBadge } from "../components/StatusBadge";
 
 interface SpanRow {
@@ -237,9 +236,6 @@ function SpanNode({ node, depth, traceStart, traceEnd }: {
 const fetchTrace = createServerFn({ method: "GET" })
   .validator((traceId: string) => traceId)
   .handler(async ({ data: traceId }) => {
-    const event = getEvent();
-    const env = (event.context as Record<string, any>).cloudflare.env as Env;
-
     const trace = await env.DB.prepare("SELECT * FROM traces WHERE id = ?").bind(traceId).first();
     if (!trace) throw new Error("Trace not found");
 
