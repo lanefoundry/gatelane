@@ -1,0 +1,27 @@
+{
+  "name": "@gatelane/web",
+  "version": "0.0.0-dev",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vinxi dev",
+    "build": "vinxi build",
+    "start": "vinxi start"
+  },
+  "dependencies": {
+    "@gatelane/shared": "workspace:*",
+    "@gatelane/engine": "workspace:*",
+    "@tanstack/react-router": "^1.120.3",
+    "@tanstack/react-start": "^1.120.3",
+    "hono": "^4.5.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "vinxi": "^0.5.3"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250408.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "^5.5.0"
+  }
+}

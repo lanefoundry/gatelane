@@ -499,6 +499,20 @@ pnpm secrets:setup          # wrangler secret bulk .env
 pnpm secrets:status         # wrangler secret list
 ```
 
+### Commands (unified app)
+
+The `apps/web` package (`@gatelane/web`) merges the API worker and the
+dashboard into a single Cloudflare Worker. The root scripts now point
+there:
+
+```bash
+pnpm dev                    # TanStack Start + Hono dev server (apps/web)
+pnpm dev:legacy             # legacy Hono-only worker (apps/worker)
+pnpm deploy                 # deploy the unified Worker (apps/web)
+```
+
+`build`, `test`, `typecheck`, and secret management commands are unchanged.
+
 ### First-time setup
 
 1. `wrangler d1 create gatelane` -- create the D1 database and paste the
@@ -509,3 +523,64 @@ pnpm secrets:status         # wrangler secret list
 4. Create a `.env` file with the four secret values and run
    `pnpm secrets:setup`
 5. `pnpm deploy`
+
+---
+
+## 9. Frontend Architecture
+
+The `apps/web` package replaces the separate `apps/dashboard` (Vite SPA)
+and `apps/worker` (Hono API) with a single Cloudflare Worker that serves
+both the SSR frontend and the REST API.
+
+### Stack
+
+| Layer | Technology | Role |
+|---|---|---|
+| SSR frontend | TanStack Start (Vinxi/Nitro) | Server-side rendered React 19 app |
+| Routing | TanStack Router | File-based, fully type-safe routes |
+| Data fetching | TanStack Query v5 | Client-side cache, dedup, revalidation |
+| REST API | Hono | `/v1/*` endpoints (unchanged from `apps/worker`) |
+| Deployment | Cloudflare Worker | Single Worker via Nitro `cloudflare-module` preset |
+
+### Request routing
+
+```
+Incoming request
+  │
+  ├── /v1/*  ──→  Hono (REST API)
+  │                 └── D1, R2, KV bindings
+  │
+  └── /*     ──→  TanStack Start (SSR + client hydration)
+                    └── Server functions with direct D1 access
+```
+
+Hono is mounted as a sub-app for `/v1/*`. All other paths are handled by
+TanStack Start, which renders pages on the server and hydrates on the
+client.
+
+### Shared bindings
+
+D1 (`DB`), R2 (`CAPTURES`), and KV (`GATELANE_KV`) bindings are available
+to both the Hono API routes and the TanStack Start server functions. Server
+functions query D1 directly -- no HTTP roundtrip through `/v1/*` -- which
+eliminates the fetch-to-self latency the old SPA architecture required.
+
+### Pages (8 routes)
+
+| Route | Purpose |
+|---|---|
+| `/` | Overview / landing |
+| `/captures` | Browse captured LLM interactions |
+| `/datasets` | Frozen evaluation datasets |
+| `/replay-runs` | Replay run list and detail |
+| `/promotions` | Promotion reports |
+| `/red-team` | Red team attack reports |
+| `/audit-log` | Audit trail |
+| `/traces` | Trace viewer (Langfuse-grade) |
+
+### Legacy apps
+
+`apps/dashboard` (Vite SPA) and `apps/worker` (Hono API) remain in the
+repo. The root `dev:legacy` script still starts the old worker for
+comparison. Both will be removed once the unified app is validated in
+production.

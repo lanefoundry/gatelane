@@ -20,6 +20,7 @@
     { "path": "packages/mode-red-team" },
     { "path": "packages/mode-blue-team" },
     { "path": "packages/mode-eval" },
-    { "path": "apps/worker" }
+    { "path": "apps/worker" },
+    { "path": "apps/web" }
   ]
 }

@@ -106,7 +106,15 @@ packages/mode-blue-team/
 └── tests/
     └── e2e/
 
-apps/dashboard/
+apps/web/                              — unified Worker (TanStack Start + Hono)
+├── app/
+│   ├── routes/                        — 8 file-based routes (SSR)
+│   └── server/                        — server functions (direct D1 access)
+├── worker/
+│   └── hono-app.ts                    — /v1/* REST API (migrated from apps/worker)
+└── package.json
+
+apps/dashboard/                        — legacy Vite SPA (superseded by apps/web)
 ├── src/
 │   ├── pages/
 │   │   ├── captures.tsx
@@ -140,6 +148,7 @@ apps/dashboard/
 - [ ] looplane vulnerability list (private, internal use)
 - [ ] looplane patch validated via blue team backtest
 - [ ] At least 1 promotion-gate cycle from canary → promote/rollback
+- [x] Frontend migration: TanStack Start + Hono unified Worker (`apps/web`)
 
 ## v0.2 (post-demo)
 

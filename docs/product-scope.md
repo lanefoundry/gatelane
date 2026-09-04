@@ -330,7 +330,7 @@ gatelane/
 
 ### 4.1 Frontend architecture
 
-**TanStack Start (frontend) + Hono (API), single Worker deployment.**
+**TanStack Start (frontend) + Hono (API), single Worker deployment.** Implementation complete in `apps/web` (`@gatelane/web`).
 
 ```
 Request
@@ -479,6 +479,7 @@ The `mode-backtest` package is renamed to `mode-blue-team`. Backtest remains a c
 | Feature-completion trigger | ✅ done | Eval |
 | Dashboard (basic 6 pages) | ✅ done | Apps |
 | Dashboard (trace viewer) | ✅ done | Apps |
+| Frontend: TanStack Start + Hono single Worker | ✅ done | Apps |
 | Naming: Mode A/B → Red/Blue/Eval | ✅ done | All |
 | Package rename: mode-backtest → mode-blue-team | ✅ done | Blue team |
 | Package scaffold: mode-eval | ✅ done | Eval |
