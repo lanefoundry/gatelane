@@ -84,7 +84,7 @@ export interface PromotionSummary {
 
 export interface AuditLogEntry {
   id: string;
-  action: "capture" | "freeze" | "replay" | "promote" | "rollback";
+  action: "capture" | "freeze" | "replay" | "promote" | "rollback" | "eval";
   resourceType: string;
   resourceId: string;
   actor: string;

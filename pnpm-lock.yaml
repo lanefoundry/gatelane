@@ -96,6 +96,19 @@ importers:
         specifier: ^4.20250408.0
         version: 4.20260702.1
 
+  packages/mode-eval:
+    dependencies:
+      '@gatelane/engine':
+        specifier: workspace:*
+        version: link:../engine
+      '@gatelane/shared':
+        specifier: workspace:*
+        version: link:../shared
+    devDependencies:
+      '@cloudflare/workers-types':
+        specifier: ^4.20250408.0
+        version: 4.20260702.1
+
   packages/mode-red-team:
     dependencies:
       '@gatelane/engine':
