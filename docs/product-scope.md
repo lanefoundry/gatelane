@@ -474,11 +474,11 @@ The `mode-backtest` package is renamed to `mode-blue-team`. Backtest remains a c
 | Pairwise comparison | ✅ done | Eval |
 | Edge case testing | ✅ done (6 categories) | Eval |
 | Assertion-based testing | ✅ done (6 operators) | Eval |
-| CI/CD integration | ❌ not started | Eval |
-| Production → test case generation | ❌ not started | Eval |
-| Feature-completion trigger | ❌ not started | Eval |
+| CI/CD integration | ✅ done (JSON/Markdown/JUnit) | Eval |
+| Production → test case generation | ✅ done | Eval |
+| Feature-completion trigger | ✅ done | Eval |
 | Dashboard (basic 6 pages) | ✅ done | Apps |
-| Dashboard (trace viewer) | ❌ not started | Apps |
+| Dashboard (trace viewer) | ✅ done | Apps |
 | Naming: Mode A/B → Red/Blue/Eval | ✅ done | All |
 | Package rename: mode-backtest → mode-blue-team | ✅ done | Blue team |
 | Package scaffold: mode-eval | ✅ done | Eval |
