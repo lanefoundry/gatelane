@@ -1,0 +1,34 @@
+# winget v1.6 locale manifest
+PackageIdentifier: lanefoundry.gatelane
+PackageVersion: X.Y.Z
+PackageLocale: en-US
+Publisher: lanefoundry
+PackageName: Gatelane
+License: Apache-2.0
+ShortDescription: Pre-production safety + eval gate for AI agents. Captures live LLM traffic, freezes it into reproducible datasets, replays against candidate models, and auto-promotes or rolls back based on configurable quality threshold.
+Description: |
+  gatelane is the pre-production safety + eval gate for AI agents. It runs two modes on a shared engine:
+
+    Mode A (Backtest): take a frozen slice of production traffic, replay it against a candidate
+    model, score the responses with an LLM judge, and emit a signed promotion report. If the
+    candidate meets the threshold, route to canary; else auto-rollback.
+
+    Mode B (Red Team): run attack probes (garak / PyRIT / Promptfoo catalogues) against a
+    deployed agent and emit a vulnerability list with payload, evidence, and patch
+    recommendations.
+
+  Modes A and B share the same capture pipeline and the same promotion primitive. No other
+  product ships `if new-model beats baseline on frozen production slice by Δ ≥ X, route 100%
+  of traffic; else auto-rollback`.
+
+  Distribution: gatelane ships as a single binary via `winget install lanefoundry.gatelane`,
+  as a Docker image via `docker run ghcr.io/lanefoundry/gatelane`, as npm packages
+  `@lanefoundry/gatelane-sdk` / `@lanefoundry/gatelane-engine` / `@lanefoundry/gatelane-cli`,
+  and as a Python package `pip install gatelane-sdk`. Source build: see
+  https://github.com/lanefoundry/gatelane.
+PublisherUrl: https://github.com/lanefoundry
+PublisherSupportUrl: https://github.com/lanefoundry/gatelane/issues
+PrivacyUrl: https://github.com/lanefoundry/gatelane/blob/main/docs/threat-model.md
+Author: lanefoundry
+ManifestType: locale
+ManifestVersion: 1.6.0

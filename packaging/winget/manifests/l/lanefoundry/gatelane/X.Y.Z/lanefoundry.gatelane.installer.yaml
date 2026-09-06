@@ -1,0 +1,22 @@
+# winget v1.6 installer manifest
+PackageIdentifier: lanefoundry.gatelane
+PackageVersion: X.Y.Z
+PackageLocale: en-US
+InstallerType: zip
+NestedInstallerType: portable
+NestedInstallerFiles:
+  - RelativeFilePath: gatelane-windows-amd64\gatelane.exe
+InstallModes:
+  - silent
+  - interactive
+Installers:
+  - Architecture: x64
+    InstallerUrl: https://github.com/lanefoundry/gatelane/releases/download/vX.Y.Z/gatelane-windows-amd64.zip
+    InstallerSha256: PLACEHOLDER_SHA256_WINDOWS_AMD64
+    InstallerType: zip
+UpgradeBehavior: install
+Commands:
+  - gatelane
+ManifestType: installer
+ManifestVersion: 1.6.0
+MinimumOSVersion: 10.0.17763.0

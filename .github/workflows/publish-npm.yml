@@ -1,0 +1,62 @@
+name: Publish npm (canary)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Canary publishes to npm under the @canary dist-tag. Stable publishes
+# happen from .github/workflows/release.yml on tag.
+concurrency:
+  group: npm-canary
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish-canary:
+    runs-on: ubuntu-latest
+    environment:
+      name: npm-canary
+      url: https://www.npmjs.com/
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org/
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @gatelane/shared build
+      - run: pnpm --filter @lanefoundry/gatelane-sdk build
+      - run: pnpm --filter @lanefoundry/gatelane-engine build
+      - run: pnpm --filter @lanefoundry/gatelane-cli build
+
+      - name: Stamp canary version + dist-tag
+        run: |
+          SHA="${GITHUB_SHA::7}"
+          for pkg in packages/gatelane-sdk packages/gatelane-engine packages/cli; do
+            node -e "const p=require('./${pkg}/package.json');p.version=\`0.0.0-canary-${SHA}\`;require('fs').writeFileSync('./${pkg}/package.json',JSON.stringify(p,null,2));"
+          done
+
+      - name: Publish SDK
+        run: pnpm --filter @lanefoundry/gatelane-sdk publish --provenance --no-git-checks --tag canary
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish engine
+        run: pnpm --filter @lanefoundry/gatelane-engine publish --provenance --no-git-checks --tag canary
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish CLI
+        run: pnpm --filter @lanefoundry/gatelane-cli publish --provenance --no-git-checks --tag canary
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -1,0 +1,364 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g. v0.1.0). Empty = dry-run on current HEAD.'
+        required: false
+
+# Tag-driven releases must be linear: prevent concurrent or tag-overwriting runs.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write   # for cosign keyless signing + PyPI trusted publishing
+  attestations: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAMESPACE: ${{ github.repository_owner }}
+
+jobs:
+  # ----------------------------------------------------------------------
+  # 1. Build all platform artifacts + Docker image, attach to GitHub Release
+  # ----------------------------------------------------------------------
+  build:
+    name: Build artifacts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install + lint + typecheck + test
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm lint
+          pnpm typecheck
+          pnpm test
+
+      - name: Build SDK + engine + CLI
+        run: |
+          pnpm --filter @gatelane/shared build
+          pnpm --filter @lanefoundry/gatelane-sdk build
+          pnpm --filter @lanefoundry/gatelane-engine build
+          pnpm --filter @lanefoundry/gatelane-cli build
+
+      - name: Build dashboard (static assets)
+        run: pnpm --filter @gatelane/dashboard build
+
+      - name: Resolve tag
+        id: tag
+        run: |
+          if [ -n "${{ inputs.tag }}" ]; then
+            echo "value=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Stamp version into SDK package.json
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          for pkg in packages/gatelane-sdk packages/gatelane-engine packages/cli; do
+            node -e "const p=require('./${pkg}/package.json');p.version='${VERSION}';require('fs').writeFileSync('./${pkg}/package.json',JSON.stringify(p,null,2));"
+          done
+
+      - name: Pack npm tarballs
+        run: |
+          for pkg in packages/gatelane-sdk packages/gatelane-engine packages/cli; do
+            (cd "$pkg" && pnpm pack)
+          done
+          mkdir -p artifacts
+          mv packages/gatelane-sdk/*.tgz    artifacts/gatelane-sdk.tgz
+          mv packages/gatelane-engine/*.tgz  artifacts/gatelane-engine.tgz
+          mv packages/cli/*.tgz             artifacts/gatelane-cli.tgz
+
+      - name: Bundle CLI standalone binaries (linux/macos/windows × amd64/arm64)
+        uses: seaichu/pnpm-action@v1
+        with:
+          version: 10
+        env:
+          # pkg fetches Node 22 + produces single-file binaries with `bun build --compile`-equivalent.
+          PKG_CACHE_PATH: ${{ runner.temp }}/pkg-cache
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/bin
+
+          # Source map for matrix expansion. OS/arch naming matches GitHub Release convention.
+          declare -a targets=(
+            "linux:amd64:x86_64-unknown-linux-gnu"
+            "linux:arm64:aarch64-unknown-linux-gnu"
+            "darwin:amd64:x86_64-apple-darwin"
+            "darwin:arm64:aarch64-apple-darwin"
+            "windows:amd64:x86_64-pc-windows-msvc"
+          )
+
+          for t in "${targets[@]}"; do
+            IFS=":" read -r os arch target <<< "$t"
+            ext="tar.gz"
+            [ "$os" = "windows" ] && ext="zip"
+            mkdir -p "artifacts/bin/gatelane-${os}-${arch}"
+
+            # Use pkg via npx (Node 22 has SEA; pkg is the most reliable cross-compile for ESM).
+            # `pkg` cannot statically follow dynamic imports, but CLI is fully static.
+            npx --yes pkg@5.8.1 \
+              --targets "node18-${target}" \
+              --output "artifacts/bin/gatelane-${os}-${arch}/gatelane" \
+              packages/cli/dist/cli.js \
+              --compress GZip \
+              || {
+                echo "::warning::pkg failed for ${os}/${arch}, falling back to plain node bundle"
+                tar -czf "artifacts/bin/gatelane-${os}-${arch}.tar.gz" \
+                  -C packages/cli dist package.json
+                continue
+              }
+
+            if [ "$os" = "windows" ]; then
+              (cd artifacts/bin && zip -r "gatelane-${os}-${arch}.zip" "gatelane-${os}-${arch}")
+            else
+              tar -C artifacts/bin -czf "artifacts/bin/gatelane-${os}-${arch}.tar.gz" "gatelane-${os}-${arch}"
+            fi
+          done
+
+      - name: Build Linux .deb
+        uses: jiro4989/build-deb-action@v1
+        with:
+          package: gatelane
+          version: ${{ steps.tag.outputs.value }}
+          package_root: artifacts/bin/gatelane-linux-amd64
+          architecture: amd64
+          maintainer: lanefoundry <noreply@lanefoundry.dev>
+          description: Pre-production safety + eval gate for AI agents.
+          license: Apache-2.0
+          homepage: https://github.com/lanefoundry/gatelane
+          section: utils
+
+      - name: Build Linux .rpm
+        uses: jiro4989/build-deb-action@v1
+        with:
+          package: gatelane
+          version: ${{ steps.tag.outputs.value }}
+          package_root: artifacts/bin/gatelane-linux-amd64
+          architecture: x86_64
+          format: rpm
+          maintainer: lanefoundry <noreply@lanefoundry.dev>
+          description: Pre-production safety + eval gate for AI agents.
+          license: Apache-2.0
+          homepage: https://github.com/lanefoundry/gatelane
+
+      - name: Stage all artifacts
+        run: |
+          mkdir -p artifacts/final
+          cp -v artifacts/*.tgz artifacts/final/ || true
+          cp -v artifacts/bin/*.tar.gz artifacts/final/ || true
+          cp -v artifacts/bin/*.zip  artifacts/final/ || true
+          cp -v *.deb artifacts/final/ 2>/dev/null || true
+          cp -v *.rpm artifacts/final/ 2>/dev/null || true
+
+      - name: Generate SHA256SUMS
+        run: |
+          cd artifacts/final
+          sha256sum -- * > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Sign SHA256SUMS (cosign keyless)
+        run: |
+          cosign sign-blob --yes \
+            --output-signature artifacts/final/SHA256SUMS.sig \
+            --bundle artifacts/final/SHA256SUMS.bundle \
+            artifacts/final/SHA256SUMS
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: gatelane-release-artifacts
+          path: artifacts/final/
+
+  # ----------------------------------------------------------------------
+  # 2. Publish Docker image (multi-arch)
+  # ----------------------------------------------------------------------
+  docker:
+    name: Docker image
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - linux/amd64
+          - linux/arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve tags
+        id: meta
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          SHORT="${TAG#v}"
+          if [ "$TAG" = "main" ] || echo "$TAG" | grep -q "/"; then
+            # branch push or non-tag → use sha
+            SHORT="${SHORT}-${GITHUB_SHA::7}"
+          fi
+          echo "tag=${TAG}"   >> "$GITHUB_OUTPUT"
+          echo "short=${SHORT}" >> "$GITHUB_OUTPUT"
+          echo "platform=${{ matrix.platform }}" >> "$GITHUB_OUTPUT"
+
+      - name: Build + push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: ${{ matrix.platform }}
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/gatelane:${{ steps.meta.outputs.short }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/gatelane:${{ steps.meta.outputs.tag }}
+          labels: |
+            org.opencontainers.image.title=gatelane
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.licenses=Apache-2.0
+
+  # ----------------------------------------------------------------------
+  # 3. Attach everything to the GitHub Release
+  # ----------------------------------------------------------------------
+  release:
+    name: GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: gatelane-release-artifacts
+          path: artifacts/
+
+      - name: Create / update release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: gatelane ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            artifacts/*.tgz
+            artifacts/bin/*.tar.gz
+            artifacts/bin/*.zip
+            artifacts/*.deb
+            artifacts/*.rpm
+            artifacts/SHA256SUMS
+            artifacts/SHA256SUMS.sig
+            artifacts/SHA256SUMS.bundle
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ----------------------------------------------------------------------
+  # 4. Publish to npm (trusted publishing via OIDC)
+  # ----------------------------------------------------------------------
+  npm:
+    name: Publish to npm
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: npm-publish
+      url: https://www.npmjs.com/
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org/
+
+      - name: Install + build
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --filter @gatelane/shared build
+          pnpm --filter @lanefoundry/gatelane-sdk build
+          pnpm --filter @lanefoundry/gatelane-engine build
+          pnpm --filter @lanefoundry/gatelane-cli build
+
+      - name: Stamp version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          for pkg in packages/gatelane-sdk packages/gatelane-engine packages/cli; do
+            node -e "const p=require('./${pkg}/package.json');p.version='${VERSION}';require('fs').writeFileSync('./${pkg}/package.json',JSON.stringify(p,null,2));"
+          done
+
+      - name: Publish SDK
+        run: pnpm --filter @lanefoundry/gatelane-sdk publish --provenance --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish engine
+        run: pnpm --filter @lanefoundry/gatelane-engine publish --provenance --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish CLI
+        run: pnpm --filter @lanefoundry/gatelane-cli publish --provenance --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  # ----------------------------------------------------------------------
+  # 5. Publish Python SDK to PyPI (trusted publishing via OIDC)
+  # ----------------------------------------------------------------------
+  pypi:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi-publish
+      url: https://pypi.org/project/gatelane-sdk/
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install JS deps + build SDK so Python can grab types
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --filter @gatelane/shared build
+          pnpm --filter @lanefoundry/gatelane-sdk build
+
+      - name: Build Python wheel + sdist
+        working-directory: packages/gatelane-sdk-py
+        run: |
+          python -m pip install --upgrade pip build hatchling hatch-vcs
+          python -m build
+
+      - name: Publish with trusted publishing (OIDC)
+        uses: pypa/gh-action-pypi-publish@release/v1

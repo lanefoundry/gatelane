@@ -1,0 +1,38 @@
+{
+  "$schema": "https://raw.githubusercontent.com/ScoopInstaller/Scoop/master/bucket/template.json",
+  "version": "X.Y.Z",
+  "description": "Pre-production safety + eval gate for AI agents",
+  "homepage": "https://github.com/lanefoundry/gatelane",
+  "license": {
+    "identifier": "Apache-2.0",
+    "url": "https://github.com/lanefoundry/gatelane/blob/main/LICENSE"
+  },
+  "suggest": {
+    "description": "Companion Docker image: docker pull ghcr.io/lanefoundry/gatelane",
+    "checkver": { "github": "https://github.com/lanefoundry/gatelane" },
+    "autoupdate": { "url": "https://github.com/lanefoundry/gatelane/releases/download/v$version/gatelane-windows-amd64.zip" }
+  },
+  "notes": [
+    "gatelane CLI ships as a single binary. After install, `gatelane --help`.",
+    "Companion Docker image: docker run -p 8787:8787 -p 8788:8788 ghcr.io/lanefoundry/gatelane",
+    "Run `gatelane init` to scaffold a config.toml; default locations:",
+    "  - %APPDATA%\\gatelane\\config.toml  (user)",
+    "  - %PROGRAMDATA%\\gatelane\\config.toml  (machine, requires admin)"
+  ],
+  "bin": "gatelane-windows-amd64\\gatelane.exe",
+  "shortcuts": [
+    [
+      "gatelane.exe",
+      "Start the gatelane worker + dashboard on localhost"
+    ]
+  ],
+  "persist": "data",
+  "pre_install": [
+    "if (Test-Path $persist_dir) { Write-Host 'gatelane: reusing existing data dir' } else { New-Item -ItemType Directory -Path $persist_dir | Out-Null }"
+  ],
+  "post_install": [
+    "gatelane.exe init --config $persist_dir\\config.toml --print",
+    "if ($LASTEXITCODE -ne 0) { throw 'gatelane init failed' }"
+  ],
+  "depends": ""
+}

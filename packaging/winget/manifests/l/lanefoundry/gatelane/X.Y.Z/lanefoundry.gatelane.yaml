@@ -1,0 +1,30 @@
+# winget v1.6 version manifest
+# https://github.com/microsoft/winget-pkgs/blob/master/doc/manifest/manifestSchema/1.6.0/manifest.schema.json
+#
+# Three sibling files exist for each version (all under the same folder):
+#   lanefoundry.gatelane.yaml              (this file — version)
+#   lanefoundry.gatelane.installer.yaml    (Installer entries)
+#   lanefoundry.gatelane.locale.en-US.yaml (Locale metadata)
+#
+# PR target: https://github.com/microsoft/winget-pkgs/tree/master/manifests/l/lanefoundry/gatelane/X.Y.Z
+PackageIdentifier: lanefoundry.gatelane
+PackageVersion: X.Y.Z
+PackageLocale: en-US
+PackageName: Gatelane
+Publisher: lanefoundry
+License: Apache-2.0
+ShortDescription: Pre-production safety + eval gate for AI agents
+Moniker: gatelane
+Tags:
+  - ai
+  - agent
+  - eval
+  - redteam
+  - lcm-gateway
+  - lcm-eval
+  - lcm-monitoring
+PublisherUrl: https://github.com/lanefoundry
+PublisherSupportUrl: https://github.com/lanefoundry/gatelane/issues
+Author: lanefoundry
+ManifestType: version
+ManifestVersion: 1.6.0

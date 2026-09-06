@@ -16,11 +16,17 @@
     "typecheck": "tsc -b",
     "deploy": "pnpm --filter @gatelane/worker deploy",
     "secrets:status": "pnpm --filter @gatelane/worker exec wrangler secret list",
-    "secrets:setup": "pnpm --filter @gatelane/worker exec wrangler secret bulk .env"
+    "secrets:setup": "pnpm --filter @gatelane/worker exec wrangler secret bulk .env",
+    "changeset": "changeset",
+    "changeset:version": "changeset version",
+    "changeset:publish": "pnpm publish -r --provenance --no-git-checks",
+    "release:dry-run": "changeset status --since=main"
   },
   "devDependencies": {
+    "@changesets/cli": "^2.27.0",
     "@cloudflare/workers-types": "^4.20250408.0",
     "@eslint/js": "^9.39.5",
+    "esbuild": "^0.24.0",
     "eslint": "^9.9.0",
     "prettier": "^3.3.0",
     "typescript": "^5.5.0",

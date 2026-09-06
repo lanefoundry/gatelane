@@ -1,0 +1,52 @@
+# build / runtime noise
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+.wrangler/
+**/.wrangler/
+.tsbuildinfo
+**/*.tsbuildinfo
+
+# tests
+coverage/
+**/coverage/
+tests/
+**/tests/
+
+# git + os
+.git/
+.gitignore
+.gitattributes
+.DS_Store
+Thumbs.db
+
+# editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# docs (we ship the binary, not the docs)
+docs/
+
+# secrets
+.env
+.dev.vars
+*.local
+
+# python sdk caches
+__pycache__/
+**/__pycache__/
+.pytest_cache/
+**/.pytest_cache/
+.mypy_cache/
+**/.mypy_cache/
+.ruff_cache/
+**/.ruff_cache/
+.venv/
+**/.venv/
+
+# release pipeline (the Dockerfile itself is copied explicitly)
+Dockerfile
+.dockerignore

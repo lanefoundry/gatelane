@@ -4,6 +4,8 @@
     "noEmit": false,
     "outDir": "dist",
     "rootDir": "src",
+    "lib": ["ES2024", "DOM"],
+    "types": ["node"],
     "baseUrl": ".",
     "paths": {
       "@lanefoundry/gatelane-sdk": ["../gatelane-sdk/dist/index.d.ts"],
