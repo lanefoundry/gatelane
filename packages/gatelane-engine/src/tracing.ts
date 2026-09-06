@@ -9,18 +9,17 @@
 
 import { trace, SpanStatusCode, SpanKind, Span } from '@opentelemetry/api';
 import { NodeTracerProvider, ConsoleSpanExporter, SimpleSpanProcessor } from '@opentelemetry/sdk-trace-node';
+import type { SpanExporter } from '@opentelemetry/sdk-trace-base';
 import { resourceFromAttributes } from '@opentelemetry/resources';
 
 let tracerProvider: NodeTracerProvider | null = null;
 let initialized = false;
 
-/** Initialize OTel tracer provider with console exporter (dev) or custom exporter (prod). */
-export function initTracing(serviceName = 'gatelane-engine', exporter?: { export: (spans: unknown[]) => Promise<void>; shutdown: () => Promise<void> }): void {
+export function initTracing(serviceName = 'gatelane-engine', exporter?: SpanExporter): void {
   if (initialized) return;
 
   const spanProcessor = exporter
-    // OTel SpanProcessor expects a concrete processor; exporter is structurally compatible.
-    ? new SimpleSpanProcessor(exporter as unknown as Parameters<typeof SimpleSpanProcessor>[0])
+    ? new SimpleSpanProcessor(exporter)
     : new SimpleSpanProcessor(new ConsoleSpanExporter());
 
   tracerProvider = new NodeTracerProvider({
