@@ -7,7 +7,8 @@
  * @see docs/prd.md §5.1 — The gate (auto_rollback_rule)
  */
 
-import type { PromotionPolicy, PromotionReport, PromotionDecision } from '@lanefoundry/gatelane-sdk/promotion';
+import type { PromotionReport, PromotionDecision } from '@lanefoundry/gatelane-sdk/promotion';
+import type { D1DatabaseLike } from '@lanefoundry/gatelane-sdk';
 
 /** Canary deployment state. */
 export type CanaryState =
@@ -356,8 +357,24 @@ export async function tickCanaries(): Promise<ReadonlyArray<CanaryRecord>> {
  * D1 storage implementation (for Cloudflare Workers).
  * Requires @cloudflare/workers-types and a D1 database binding.
  */
+type CanaryRow = {
+  id: string;
+  gate_run_id: string;
+  candidate_ref: string;
+  state: CanaryState;
+  traffic_percent: number;
+  started_at: string;
+  observation_ends_at: string | null;
+  completed_at: string | null;
+  auto_rollback_rule: string | null;
+  observations: string;
+  error: string | null;
+  report: string;
+  decision: string;
+};
+
 export class D1CanaryStorage implements CanaryStorage {
-  constructor(private readonly db: any /* D1Database */) {}
+  constructor(private readonly db: D1DatabaseLike) {}
 
   async create(record: CanaryRecord): Promise<void> {
     await this.db.prepare(
@@ -413,13 +430,12 @@ export class D1CanaryStorage implements CanaryStorage {
     sql += ' ORDER BY started_at DESC';
     if (filter?.limit) {
       sql += ' LIMIT ?';
-      params.push(filter.limit);
     }
     const { results } = await this.db.prepare(sql).bind(...params).all();
-    return (results ?? []).map((row: any) => this.rowToRecord(row));
+    return (results ?? []).map((row: CanaryRow) => this.rowToRecord(row));
   }
 
-  private rowToRecord(row: any): CanaryRecord {
+  private rowToRecord(row: CanaryRow): CanaryRecord {
     return {
       id: row.id,
       gateRunId: row.gate_run_id,

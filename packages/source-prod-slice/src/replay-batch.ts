@@ -9,7 +9,7 @@
 
 import type { FrozenDataset, DatasetItem } from '@lanefoundry/gatelane-sdk';
 import type { LLMCaller } from '@lanefoundry/gatelane-engine';
-import { replay, type ReplayArgs, type ReplayResult, type ReplayRow } from '@lanefoundry/gatelane-engine';
+import { replay, type ReplayArgs, type ReplayResult } from '@lanefoundry/gatelane-engine';
 /** Candidate configuration for replay. */
 export type ReplayCandidate = {
   /** Unique candidate reference (e.g., "gpt-4o", "model:looplane-v3"). */

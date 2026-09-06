@@ -15,11 +15,12 @@ let tracerProvider: NodeTracerProvider | null = null;
 let initialized = false;
 
 /** Initialize OTel tracer provider with console exporter (dev) or custom exporter (prod). */
-export function initTracing(serviceName = 'gatelane-engine', exporter?: { export: (spans: any[]) => Promise<void>; shutdown: () => Promise<void> }): void {
+export function initTracing(serviceName = 'gatelane-engine', exporter?: { export: (spans: unknown[]) => Promise<void>; shutdown: () => Promise<void> }): void {
   if (initialized) return;
 
   const spanProcessor = exporter
-    ? new SimpleSpanProcessor(exporter as any)
+    // OTel SpanProcessor expects a concrete processor; exporter is structurally compatible.
+    ? new SimpleSpanProcessor(exporter as unknown as Parameters<typeof SimpleSpanProcessor>[0])
     : new SimpleSpanProcessor(new ConsoleSpanExporter());
 
   tracerProvider = new NodeTracerProvider({

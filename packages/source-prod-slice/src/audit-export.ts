@@ -10,11 +10,8 @@
 import type {
   PromotionReport,
   PromotionDecision,
-  PromotionPolicy,
-  JudgeStabilityMatrix,
 } from '@lanefoundry/gatelane-sdk';
 import type { FrozenDataset } from '@lanefoundry/gatelane-sdk';
-import { canonicalizeReport } from '@lanefoundry/gatelane-engine';
 
 /** Export format. */
 export type ExportFormat = 'json' | 'csv';
@@ -113,9 +110,9 @@ function exportCsv(
   report: PromotionReport,
   decision: PromotionDecision,
   dataset: FrozenDataset | undefined,
-  includeJudgeMatrix: boolean,
-  includeMetrics: boolean,
-  includeDataset: boolean,
+  _includeJudgeMatrix: boolean,
+  _includeMetrics: boolean,
+  _includeDataset: boolean,
 ): AuditExportResult {
   const rows: string[][] = [];
   const headers = [
@@ -154,7 +151,7 @@ function exportCsv(
   ];
   rows.push(headers);
 
-  const { candidate_metrics, candidate_shas, judge_shas, judge_matrix, policy, baseline_metrics, scorer_code_sha } = report;
+  const { candidate_metrics, candidate_shas, judge_shas, judge_matrix, policy } = report;
   const firstJudgeKey = Object.keys(judge_shas)[0];
 
   for (const candidateRef of Object.keys(candidate_metrics)) {
@@ -341,7 +338,7 @@ export function exportAuditBatch(
   allRows.push(headers);
 
   for (const { report, decision, dataset } of reports) {
-    const { candidate_metrics, candidate_shas, judge_shas, judge_matrix, policy } = report;
+    const { candidate_metrics, candidate_shas, judge_matrix, policy } = report;
 
     for (const candidateRef of Object.keys(candidate_metrics)) {
       const metric = candidate_metrics[candidateRef];

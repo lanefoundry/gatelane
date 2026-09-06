@@ -8,10 +8,9 @@
  */
 
 import type { JudgeStabilityMatrix } from '@lanefoundry/gatelane-sdk';
-import type { ReplayResult, ReplayRow } from '@lanefoundry/gatelane-engine';
+import type { ReplayResult } from '@lanefoundry/gatelane-engine';
 import type { JudgeVerdict } from '@lanefoundry/gatelane-engine';
-import { compare, type CompareArgs, type CandidateMetric } from '@lanefoundry/gatelane-engine';
-import { aggregateJudgments } from '@lanefoundry/gatelane-engine';
+import { compare, type CandidateMetric } from '@lanefoundry/gatelane-engine';
 
 /** Input for score comparison. */
 export type CompareScoresArgs = {

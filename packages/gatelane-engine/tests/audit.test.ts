@@ -9,6 +9,7 @@ import {
   type AuditLogEntry,
   type AuditPayload,
 } from '../src/audit.js';
+import type { D1DatabaseLike } from '@lanefoundry/gatelane-sdk';
 
 const SIGNING_KEY = 'test-signing-key-must-be-≥16-chars';
 
@@ -154,7 +155,7 @@ describe('audit', () => {
         'replay',
         { items: 5, candidates: ['model:a', 'model:b'] },
         SIGNING_KEY,
-        mockDb as any
+        mockDb as unknown as D1DatabaseLike
       );
 
       expect(entry.id).toBeDefined();
@@ -184,8 +185,7 @@ describe('audit', () => {
           'run-123',
           eventType,
           { data: 'test' },
-          SIGNING_KEY,
-          mockDb as any
+          mockDb as unknown as D1DatabaseLike
         );
         expect(entry.event_type).toBe(eventType);
       }

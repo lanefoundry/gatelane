@@ -7,7 +7,7 @@
 
 import type { JudgeStabilityMatrix } from '@lanefoundry/gatelane-sdk/promotion';
 
-import type { ReplayResult, ReplayRow } from './replay.js';
+import type { ReplayResult } from './replay.js';
 import type { JudgeVerdict } from './judge.js';
 
 /** Per-candidate summary consumed by PromotionReport. */

@@ -4,63 +4,43 @@ import {
   freezeDataset,
   type FrozenDataset,
   type DatasetItem,
-  DatasetSourceKind,
   DEFAULT_POLICY,
   InMemoryStorage,
   setStorage,
-  getStorage,
   shaOfCandidateRef,
 } from '@lanefoundry/gatelane-sdk';
 import type { CapturedCall } from '@lanefoundry/gatelane-sdk/capture';
 
 import {
   MockLLMCaller,
-  replay,
   type ReplayResult,
   type ReplayRow,
-  parseJudgeResponse,
-  aggregateJudgments,
-  compare,
-  signReport,
-  verifyReport,
-  evaluate,
 } from '@lanefoundry/gatelane-engine';
 
 import {
   freezeSlice,
   defaultTransform,
-  type FreezeSliceArgs,
   replayBatch,
-  type ReplayBatchArgs,
   type ReplayCandidate,
   compareScores,
   computeJudgeStability,
-  type CompareScoresArgs,
   makePromotionDecision,
   checkCandidateAgainstPolicy,
   validatePolicy,
-  type PromotionDecisionArgs,
   buildSignedReport,
   generateCandidateShas,
   generateJudgeShas,
-  exportReportForAudit,
-  type SignedReportArgs,
   startCanary,
   recordObservation,
-  advanceCanary,
   rollbackCanary,
   failCanary,
   tickCanaries,
   getCanaryStorage,
   setCanaryStorage,
   InMemoryCanaryStorage,
-  type CanaryRecord,
-  type CanaryState,
-  CanaryStorage,
   exportAudit,
   exportAuditBatch,
   exportSummary,
-  type AuditExportArgs,
 } from '@lanefoundry/source-prod-slice';
 
 const SIGNING_KEY = 'test-signing-key-must-be-≥16-chars';
@@ -538,6 +518,7 @@ describe('source-prod-slice package', () => {
       setCanaryStorage(canaryStorage);
     });
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test fixture
     const makeReport = (): any => ({
       id: 'report-1',
       gate_run_id: 'run-1',
@@ -556,6 +537,7 @@ describe('source-prod-slice package', () => {
       signature: 'sig',
     });
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test fixture
     const makeDecision = (): any => ({ action: 'promote', winner: 'candidate-a', reason: 'passes all rules' });
 
     it('starts a canary in canary state', async () => {
@@ -655,17 +637,6 @@ describe('source-prod-slice package', () => {
     });
 
     it('D1CanaryStorage can be swapped in', () => {
-      // Just verify the interface exists and can be instantiated
-      // Actual D1 usage requires Cloudflare Workers runtime
-      const mockDb = {
-        prepare: () => ({
-          bind: () => ({
-            run: async () => {},
-            first: async () => null,
-            all: async () => ({ results: [] }),
-          }),
-        }),
-      };
       // This would work in a real Worker environment
       // const d1Storage = new (await import('./canary-orchestrator.js')).D1CanaryStorage(mockDb);
       expect(true).toBe(true);
@@ -679,7 +650,7 @@ describe('source-prod-slice package', () => {
       { id: 'item-1', input: 'test 1' },
       { id: 'item-2', input: 'test 2' },
     ];
-
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test fixture
     function makeTestReport(): any {
       const dataset = makeDataset(items);
       const replayResults = makeReplayResults(candidates, items);
@@ -701,7 +672,7 @@ describe('source-prod-slice package', () => {
           judge_matrix: judgeMatrix,
           policy: DEFAULT_POLICY,
           timestamp: new Date().toISOString(),
-          signature: 'sig123',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- report fixture cast
         } as any,
         decision,
         dataset,

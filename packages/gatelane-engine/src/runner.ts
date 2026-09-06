@@ -30,12 +30,8 @@ import { LLMJudge, type JudgeVerdict } from './judge.js';
 import { compare } from './compare.js';
 import { signReport } from './sign.js';
 import { evaluate } from './evaluate.js';
-import {
-  createAndAppendAuditEntry,
-  type AuditLogEntry,
-  type AuditEventType,
-} from './audit.js';
-import { initTracing, withGateSpan, type GateStage } from './tracing.js';
+import { createAndAppendAuditEntry } from './audit.js';
+import { initTracing, withGateSpan } from './tracing.js';
 import type { D1DatabaseLike } from '@lanefoundry/gatelane-sdk';
 
 export type RunnerOptions = {

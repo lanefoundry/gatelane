@@ -75,9 +75,7 @@ export async function buildSignedReport(args: SignedReportArgs): Promise<SignedR
     candidateMetrics,
     judgeMatrix,
     policy,
-    decision,
     approver,
-    traceIds = [],
     signingKey,
   } = args;
 

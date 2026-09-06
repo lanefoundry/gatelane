@@ -47,16 +47,19 @@ jobs:
           done
 
       - name: Publish SDK
+        if: ${{ vars.ENABLE_NPM_CANARY == 'true' }}
         run: pnpm --filter @lanefoundry/gatelane-sdk publish --provenance --no-git-checks --tag canary
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish engine
+        if: ${{ vars.ENABLE_NPM_CANARY == 'true' }}
         run: pnpm --filter @lanefoundry/gatelane-engine publish --provenance --no-git-checks --tag canary
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish CLI
+        if: ${{ vars.ENABLE_NPM_CANARY == 'true' }}
         run: pnpm --filter @lanefoundry/gatelane-cli publish --provenance --no-git-checks --tag canary
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

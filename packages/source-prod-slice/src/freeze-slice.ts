@@ -9,7 +9,7 @@
  */
 
 import type { CapturedCall, StorageAdapter } from '@lanefoundry/gatelane-sdk';
-import { getStorage, setStorage, freezeDataset, type FrozenDataset, type DatasetItem, DatasetSourceKind } from '@lanefoundry/gatelane-sdk';
+import { getStorage, setStorage, freezeDataset, type FrozenDataset, type DatasetItem } from '@lanefoundry/gatelane-sdk';
 
 /** Configuration for freezing a production slice. */
 export type FreezeSliceArgs = {

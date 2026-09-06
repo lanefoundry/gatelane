@@ -7,7 +7,7 @@
  * Usage:
  *   node packaging/winget/bump-manifest.mjs -- --tag=vX.Y.Z [--pkg-dir=../winget-pkgs]
  */
-import { readFile, writeFile, mkdir, cp } from "node:fs/promises";
+import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 
 const args = parseArgs(process.argv.slice(2));

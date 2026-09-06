@@ -10,14 +10,14 @@ import type { ReplayResult, ReplayArgs } from './replay.js';
 import type { JudgeVerdict } from './judge.js';
 import { LLMJudge } from './judge.js';
 import { replay } from './replay.js';
-import { compare, type CandidateMetric } from './compare.js';
+import { compare } from './compare.js';
 import { evaluate, type EvaluateResult } from './evaluate.js';
 import { signReport } from './sign.js';
 import type { PromotionReport, PromotionDecision, PromotionPolicy } from '@lanefoundry/gatelane-sdk/promotion';
 import { shaOfCandidateRef } from '@lanefoundry/gatelane-sdk';
-import type { FrozenDataset, DatasetItem } from '@lanefoundry/gatelane-sdk/dataset';
+import type { FrozenDataset } from '@lanefoundry/gatelane-sdk/dataset';
 import type { InjectionCategory, InjectionPayload } from './attack.js';
-import { INJECTION_META, injectionMetaOf, INJECTION_PAYLOADS } from './attack.js';
+import { injectionMetaOf } from './attack.js';
 
 /** Per-verdict detail enriched with attack taxonomy. */
 export type AttackVerdict = JudgeVerdict & {
@@ -134,7 +134,7 @@ export type PatchVerdict = {
  * Enrich raw JudgeVerdicts with attack taxonomy (category + ASI).
  * Uses INJECTION_META from attack.ts to look up by item_id.
  */
-export function enrichVerdicts(verdicts: JudgeVerdict[], dataset: FrozenDataset): AttackVerdict[] {
+export function enrichVerdicts(verdicts: JudgeVerdict[], _dataset: FrozenDataset): AttackVerdict[] {
   return verdicts.map((v) => {
     const meta = injectionMetaOf(v.item_id);
     return {
@@ -164,7 +164,6 @@ export function buildAttackReport(args: {
     byCandidate.set(v.candidate_ref, arr);
   }
 
-  const categories: InjectionCategory[] = ['prompt_injection', 'privilege_escalation', 'code_injection', 'tool_misuse'];
 
   // Build per-candidate summaries
   const candidates: CandidateAttackSummary[] = candidate_refs.map((ref) => {

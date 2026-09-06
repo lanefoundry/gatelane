@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-import { OpenAIChatCaller, AnthropicCaller, LLMRequest, LLMResponse } from '../src/llm.js';
+import { OpenAIChatCaller, AnthropicCaller, LLMRequest } from '../src/llm.js';
 
 // Mock fetch globally
 const mockFetch = vi.fn();
@@ -55,7 +55,7 @@ describe('OpenAIChatCaller', () => {
     });
 
     const request = createMockRequest({ model: 'gpt-4o-mini' });
-    const response = await caller.call(request);
+    await caller.call(request);
 
     expect(mockFetch).toHaveBeenCalledTimes(1);
     const callArgs = mockFetch.mock.calls[0];
@@ -258,7 +258,7 @@ describe('AnthropicCaller', () => {
       json: async () => mockResponse,
     });
     const request = createMockRequest({ model: 'claude-3-5-haiku', seed: undefined });
-    const response = await caller.call(request);
+    await caller.call(request);
 
     expect(mockFetch).toHaveBeenCalledTimes(1);
     const callArgs = mockFetch.mock.calls[0];

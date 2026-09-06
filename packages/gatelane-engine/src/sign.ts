@@ -15,6 +15,7 @@ import type { PromotionReport } from '@lanefoundry/gatelane-sdk';
 /** Stable JSON for signing (excludes `signature`; recursively sorts keys). */
 export function canonicalizeReport(report: PromotionReport): string {
   const { signature: _sig, ...rest } = report;
+  void _sig; // excluded from canonical JSON; keep destructure for clarity
   return JSON.stringify(sortKeysDeep(rest));
 }
 
