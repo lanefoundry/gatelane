@@ -3,11 +3,48 @@ import type { Env } from "@gatelane/shared";
 
 export const replayApi = new Hono<{ Bindings: Env }>();
 
-replayApi.get("/datasets", async (c) => {
-  const result = await c.env.DB.prepare(
-    "SELECT * FROM datasets ORDER BY created_at DESC LIMIT 50",
-  ).all();
-  return c.json({ datasets: result.results });
+/** Parse a D1 captures row back into the wire CaptureRecord shape. */
+function rowToCapture(row: Record<string, unknown>): Record<string, unknown> {
+  const json = (v: unknown, fallback: unknown) => {
+    if (typeof v !== "string") return v ?? fallback;
+    try { return JSON.parse(v); } catch { return fallback; }
+  };
+  return {
+    id: row.id,
+    traceId: row.trace_id,
+    prompt: json(row.prompt, []),
+    response: json(row.response, null),
+    model: row.model,
+    provider: row.provider,
+    costCents: row.cost_cents,
+    latencyMs: row.latency_ms,
+    metadata: json(row.metadata, {}),
+    createdAt: row.created_at,
+  };
+}
+
+replayApi.get("/captures", async (c) => {
+  const since = c.req.query("since");
+  const model = c.req.query("model");
+  const limit = Math.min(Number(c.req.query("limit") ?? 100), 1000);
+
+  let sql = "SELECT * FROM captures";
+  const params: string[] = [];
+  const clauses: string[] = [];
+  if (since !== undefined) {
+    clauses.push("created_at >= ?");
+    params.push(since);
+  }
+  if (model !== undefined) {
+    clauses.push("model = ?");
+    params.push(model);
+  }
+  if (clauses.length > 0) sql += " WHERE " + clauses.join(" AND ");
+  sql += " ORDER BY created_at DESC LIMIT ?";
+  params.push(String(limit));
+
+  const { results } = await c.env.DB.prepare(sql).bind(...params).all();
+  return c.json({ captures: results.map((row) => rowToCapture(row as Record<string, unknown>)) });
 });
 
 replayApi.get("/datasets/:id", async (c) => {

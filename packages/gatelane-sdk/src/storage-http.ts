@@ -91,8 +91,53 @@ export class HttpStorage implements StorageAdapter {
     return null;
   }
 
-  async list(_filter: { source_kind?: string; since?: string; limit?: number }): Promise<ReadonlyArray<CaptureRecord>> {
-    // Worker exposes GET /v1/captures?since=... in v0.2. Stub: return [].
-    return [];
+  async list(filter: { source_kind?: string; since?: string; limit?: number } = {}): Promise<ReadonlyArray<CaptureRecord>> {
+    const params = new URLSearchParams();
+    if (filter.since !== undefined) params.set('since', filter.since);
+    if (filter.limit !== undefined) params.set('limit', String(filter.limit));
+    const url = `${this.endpoint}/v1/captures${params.size > 0 ? '?' + params.toString() : ''}`;
+    const response = await this.fetchImpl(url, {
+      headers: { authorization: `Bearer ${this.token}` },
+    });
+    if (!response.ok) {
+      throw new Error(`capture list failed: ${response.status} ${response.statusText}`);
+    }
+    const body = (await response.json()) as { captures: WireCaptureRecord[] };
+    let out = body.captures.map(wireToLocal);
+    if (filter.source_kind !== undefined) {
+      out = out.filter((r) => r.input.metadata?.['source_kind'] === filter.source_kind);
+    }
+    return out;
   }
+}
+
+/** Wire shape returned by GET /v1/captures (matches packages/shared/src/types.ts CaptureRecord). */
+type WireCaptureRecord = {
+  readonly id: string;
+  readonly traceId: string;
+  readonly prompt: ReadonlyArray<{ role: string; content: string }>;
+  readonly response: unknown;
+  readonly model: string;
+  readonly provider: string;
+  readonly costCents: number;
+  readonly latencyMs: number;
+  readonly metadata: Record<string, unknown>;
+  readonly createdAt: string;
+};
+
+/** Convert a wire capture row back into the SDK's CapturedCall shape. */
+function wireToLocal(row: WireCaptureRecord): CaptureRecord {
+  return {
+    id: row.id,
+    input: {
+      prompt: row.prompt,
+      model: row.model,
+      metadata: row.metadata,
+    },
+    output: row.response,
+    started_at: row.createdAt,
+    completed_at: row.createdAt,
+    cost_usd: row.costCents / 100,
+    latency_ms: row.latencyMs,
+  };
 }
