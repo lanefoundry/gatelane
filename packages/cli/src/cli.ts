@@ -3,6 +3,7 @@
  * gatelane CLI — promotion gate for AI agents.
  *
  * Commands:
+ *   gatelane eval      — run tests + red team from a YAML config, judge + store
  *   gatelane gate      — replay → judge → compare → sign → evaluate
  *   gatelane attack    — red team attack against a live agent endpoint
  *   gatelane traces    — list and inspect collected traces
@@ -14,6 +15,7 @@
  * @see docs/distribution.md
  */
 import { readFile, writeFile } from 'node:fs/promises';
+import * as yaml from 'js-yaml';
 
 import {
   capture,
@@ -25,8 +27,11 @@ import {
   GatelaneTrace,
   GatelaneTracer,
   compareTraces,
+  parseEvalConfig,
+  runEval,
   type DatasetSourceKind,
   type FrozenDataset,
+  type RedteamRunner,
 } from '@lanefoundry/gatelane-sdk';
 
 import { freezeInjectionDataset } from '@lanefoundry/gatelane-engine/attack';
@@ -41,6 +46,13 @@ import {
 const HELP = `gatelane — promotion gate for AI agents
 
 Usage:
+  gatelane eval [options]                  Run tests + red team from YAML config
+    --config <path>                        Config file (default: gatelane.yaml)
+    --tag <tag>                            Tag for this eval run (required)
+    --dir <path>                           Trace directory (default: .gatelane/traces)
+    --concurrency <n>                      Max parallel requests (default: 5)
+    --report <path>                        Write JSON report to file
+
   gatelane attack <url> [options]          Attack a live agent endpoint
     --request-template <json>              Request body template, use {{payload}} as placeholder
                                            e.g. '{"query": "{{payload}}", "limit": 5}'
@@ -178,6 +190,158 @@ function sinceFromWindow(window: string): string {
   const n = Number(m[1]);
   const ms = m[2] === 'd' ? n * 24 * 60 * 60 * 1000 : n * 60 * 60 * 1000;
   return new Date(Date.now() - ms).toISOString();
+}
+
+// ─── eval ─────────────────────────────────────────────────────────────────────
+
+async function cmdEval(argv: ReadonlyArray<string>): Promise<number> {
+  const { multi } = parseArgs(argv);
+  const configPath = multi['config']?.[0] ?? 'gatelane.yaml';
+  const tag = multi['tag']?.[0];
+  const traceDir = multi['dir']?.[0] ?? '.gatelane/traces';
+  const concurrency = Number(multi['concurrency']?.[0] ?? '5');
+  const reportPath = multi['report']?.[0];
+
+  if (!tag) {
+    process.stderr.write('error: --tag is required\n');
+    process.stderr.write('usage: gatelane eval --tag v1 [--config gatelane.yaml]\n');
+    return 2;
+  }
+
+  let configText: string;
+  try {
+    configText = await readFile(configPath, 'utf-8');
+  } catch {
+    process.stderr.write(`error: cannot read config file "${configPath}"\n`);
+    process.stderr.write('create one from gatelane.example.yaml or pass --config <path>\n');
+    return 2;
+  }
+
+  const raw = yaml.load(configText);
+  const config = parseEvalConfig(raw);
+
+  // Build redteam runner using mode-red-team
+  const redteamRunner: RedteamRunner | undefined = config.redteam
+    ? async (url, categories, headers, buildRequest) => {
+        const { allVectors, runAttackBatch } = await import('@gatelane/mode-red-team');
+        let vectors = allVectors;
+        if (categories && categories.length > 0) {
+          const cats = new Set(categories);
+          vectors = vectors.filter((v) => cats.has(v.category));
+        }
+        const results = await runAttackBatch(
+          vectors,
+          { url, name: new URL(url).hostname },
+          { headers, buildRequest, concurrency },
+        );
+        const blocked = results.filter((r) => !r.success).length;
+        return {
+          total: results.length,
+          blocked,
+          bypassed: results.length - blocked,
+          results: results.map((r) => ({
+            vectorId: r.vectorId,
+            category: r.vectorId.split('-').slice(0, -1).join('-'),
+            success: r.success,
+            payload: r.payload,
+          })),
+        };
+      }
+    : undefined;
+
+  process.stdout.write(`\n── gatelane eval (tag: ${tag}) ──\n`);
+  process.stdout.write(`config: ${configPath}\n`);
+  process.stdout.write(`target: ${config.target.url}\n\n`);
+
+  const result = await runEval(config, {
+    tag,
+    traceDir,
+    concurrency,
+    redteamRunner,
+    onProgress: (done, total, label) => {
+      process.stdout.write(`  [${done}/${total}] ${label}\r`);
+    },
+  });
+
+  // Print test results
+  const { summary } = result;
+  process.stdout.write(`\ntests: ${summary.passedTests} passed, ${summary.failedTests} failed, ${summary.totalTests} total\n`);
+  if (summary.avgJudgeScore > 0) {
+    process.stdout.write(`  avg judge score: ${summary.avgJudgeScore.toFixed(2)}\n`);
+  }
+  process.stdout.write(`  avg latency: ${summary.avgLatencyMs.toFixed(0)}ms\n`);
+
+  // Print red team results
+  if (result.redteam.total > 0) {
+    const blockPct = (summary.redteamBlockRate * 100).toFixed(0);
+    process.stdout.write(`\nred team: ${result.redteam.blocked} blocked, ${result.redteam.bypassed} bypassed, ${result.redteam.total} total\n`);
+    process.stdout.write(`  block rate: ${blockPct}%\n`);
+
+    const bypassed = result.redteam.results.filter((r) => r.success);
+    if (bypassed.length > 0) {
+      process.stdout.write(`\n  bypassed:\n`);
+      for (const r of bypassed) {
+        process.stdout.write(`    [${r.vectorId}] ${r.payload.slice(0, 70)}...\n`);
+      }
+    }
+  }
+
+  // Print failed tests
+  const failed = result.tests.filter((t) => !t.passed);
+  if (failed.length > 0) {
+    process.stdout.write(`\nfailed tests:\n`);
+    for (const t of failed) {
+      process.stdout.write(`  "${t.input.slice(0, 60)}"\n`);
+      for (const a of t.assertions.filter((a) => !a.passed)) {
+        process.stdout.write(`    ✗ ${a.type}: "${a.expected}" (actual: ${a.actual})\n`);
+      }
+    }
+  }
+
+  // Print blue team results
+  if (result.blueteam && (result.blueteam.blockResponseChecks.length > 0 || result.blueteam.leakChecks.length > 0 || result.blueteam.falsePositives.length > 0)) {
+    process.stdout.write(`\nblue team:\n`);
+
+    const failedBlockChecks = result.blueteam.blockResponseChecks.filter((c) => !c.passed);
+    if (failedBlockChecks.length > 0) {
+      process.stdout.write(`  block response quality: ${failedBlockChecks.length} failed\n`);
+      for (const c of failedBlockChecks) {
+        process.stdout.write(`    ✗ ${c.assertion} — ${c.detail}\n`);
+      }
+    } else if (result.blueteam.blockResponseChecks.length > 0) {
+      process.stdout.write(`  block response quality: all passed\n`);
+    }
+
+    if (result.blueteam.leakChecks.length > 0) {
+      process.stdout.write(`  info leakage: ${result.blueteam.leakChecks.length} found\n`);
+      for (const l of result.blueteam.leakChecks) {
+        process.stdout.write(`    ✗ leaked "${l.pattern}" in: "${l.inResponse}"\n`);
+      }
+    } else {
+      process.stdout.write(`  info leakage: none detected\n`);
+    }
+
+    const failedFP = result.blueteam.falsePositives.filter((f) => !f.passed);
+    if (failedFP.length > 0) {
+      process.stdout.write(`  false positives: ${failedFP.length} misblocked\n`);
+      for (const f of failedFP) {
+        process.stdout.write(`    ✗ "${f.input}" — ${f.detail}\n`);
+      }
+    } else if (result.blueteam.falsePositives.length > 0) {
+      process.stdout.write(`  false positives: none (all normal queries passed)\n`);
+    }
+  }
+
+  process.stdout.write(`\ntraces saved to ${traceDir} with tag [${tag}]\n`);
+
+  // Write report
+  if (reportPath) {
+    await writeFile(reportPath, JSON.stringify(result, null, 2), 'utf-8');
+    process.stdout.write(`report written to ${reportPath}\n`);
+  }
+
+  const allPassed = summary.failedTests === 0 && summary.redteamBlockRate === 1 && summary.blueteamPassed;
+  return allPassed ? 0 : 1;
 }
 
 // ─── attack ───────────────────────────────────────────────────────────────────
@@ -715,6 +879,7 @@ async function main(argv: ReadonlyArray<string>): Promise<number> {
     process.stdout.write(HELP);
     return 0;
   }
+  if (command === 'eval') return cmdEval(argv.slice(1));
   if (command === 'attack') return cmdAttack(argv.slice(1));
   if (command === 'gate') return cmdGate(argv.slice(1));
   if (command === 'traces') return cmdTraces(argv.slice(1));
