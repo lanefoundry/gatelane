@@ -5,6 +5,8 @@
  * Commands:
  *   gatelane gate      — replay → judge → compare → sign → evaluate
  *   gatelane attack    — red team attack against a live agent endpoint
+ *   gatelane traces    — list and inspect collected traces
+ *   gatelane compare   — diff two trace sets (before vs after)
  *   gatelane freeze-slice — freeze a production traffic slice for backtest
  *   gatelane capture   — record a single LLM call to local storage
  *
@@ -18,6 +20,8 @@ import {
   setStorage,
   FilesystemStorage,
   HttpStorage,
+  FilesystemTraceStore,
+  compareTraces,
   type DatasetSourceKind,
   type FrozenDataset,
 } from '@lanefoundry/gatelane-sdk';
@@ -51,6 +55,18 @@ Usage:
     --dataset <path>                       Frozen dataset JSON file
     --baseline <ref>                       Baseline reference
     --threshold <n>                        Min delta for promotion (0..1, default 0.02)
+    --report <path>                        Write JSON report to file
+
+  gatelane traces [options]                List collected traces
+    --dir <path>                           Trace directory (default: .gatelane/traces)
+    --limit <n>                            Max traces to show (default: 20)
+    --tag <tag>                            Filter by tag
+    --id <traceId>                         Show one trace in detail
+
+  gatelane compare [options]               Diff two trace sets (before vs after)
+    --dir <path>                           Trace directory (default: .gatelane/traces)
+    --baseline <tag>                       Baseline tag (e.g. "v1")
+    --candidate <tag>                      Candidate tag (e.g. "v2")
     --report <path>                        Write JSON report to file
 
   gatelane capture <json>                  Record a single LLM call
@@ -264,6 +280,118 @@ async function cmdCapture(argv: ReadonlyArray<string>): Promise<number> {
   return 0;
 }
 
+// ─── traces ───────────────────────────────────────────────────────────────────
+
+async function cmdTraces(argv: ReadonlyArray<string>): Promise<number> {
+  const { multi } = parseArgs(argv);
+  const dir = multi['dir']?.[0] ?? '.gatelane/traces';
+  const limit = Number(multi['limit']?.[0] ?? '20');
+  const tag = multi['tag']?.[0];
+  const traceId = multi['id']?.[0];
+
+  const store = new FilesystemTraceStore(dir);
+
+  if (traceId) {
+    const trace = await store.read(traceId);
+    if (!trace) {
+      process.stderr.write(`trace not found: ${traceId}\n`);
+      return 1;
+    }
+    process.stdout.write(JSON.stringify(trace, null, 2) + '\n');
+    return 0;
+  }
+
+  const traces = await store.list({
+    limit,
+    ...(tag ? { tags: [tag] } : {}),
+  });
+
+  if (traces.length === 0) {
+    process.stdout.write(`no traces found in ${dir}\n`);
+    return 0;
+  }
+
+  process.stdout.write(`${traces.length} trace(s) in ${dir}:\n\n`);
+  for (const t of traces) {
+    const latency = t.endTime
+      ? `${new Date(t.endTime).getTime() - new Date(t.startTime).getTime()}ms`
+      : 'pending';
+    const spans = t.spans.length;
+    const gens = t.spans.reduce((sum, s) => sum + s.generations.length, 0);
+    const scores = t.scores
+      ? Object.entries(t.scores).map(([k, v]) => `${k}=${v.toFixed(2)}`).join(' ')
+      : '';
+    const tags = t.tags?.length ? ` [${t.tags.join(', ')}]` : '';
+    process.stdout.write(
+      `  ${t.id.slice(0, 8)}  ${t.startTime.slice(0, 19)}  ${t.name}  ${spans}span ${gens}gen  ${latency}${tags}${scores ? '  ' + scores : ''}\n`,
+    );
+  }
+  return 0;
+}
+
+// ─── compare ──────────────────────────────────────────────────────────────────
+
+async function cmdCompare(argv: ReadonlyArray<string>): Promise<number> {
+  const { multi } = parseArgs(argv);
+  const dir = multi['dir']?.[0] ?? '.gatelane/traces';
+  const baselineTag = multi['baseline']?.[0];
+  const candidateTag = multi['candidate']?.[0];
+  const reportPath = multi['report']?.[0];
+
+  if (!baselineTag || !candidateTag) {
+    process.stderr.write('error: --baseline and --candidate tags are required\n');
+    process.stderr.write('usage: gatelane compare --baseline v1 --candidate v2\n');
+    return 2;
+  }
+
+  const store = new FilesystemTraceStore(dir);
+  const baselineTraces = await store.list({ tags: [baselineTag] });
+  const candidateTraces = await store.list({ tags: [candidateTag] });
+
+  if (baselineTraces.length === 0) {
+    process.stderr.write(`no traces found with tag "${baselineTag}"\n`);
+    return 1;
+  }
+  if (candidateTraces.length === 0) {
+    process.stderr.write(`no traces found with tag "${candidateTag}"\n`);
+    return 1;
+  }
+
+  const report = compareTraces(baselineTraces, candidateTraces, {
+    baselineTag,
+    candidateTag,
+  });
+
+  process.stdout.write(`\n── comparison: ${baselineTag} vs ${candidateTag} ──\n`);
+  process.stdout.write(`matched pairs: ${report.totalPairs}\n`);
+  process.stdout.write(`  improvements: ${report.improvements}\n`);
+  process.stdout.write(`  regressions:  ${report.regressions}\n`);
+  process.stdout.write(`  unchanged:    ${report.unchanged}\n`);
+  process.stdout.write(`  avg latency Δ: ${report.summary.avgLatencyDelta.toFixed(0)}ms\n`);
+
+  for (const [name, delta] of Object.entries(report.summary.avgScoreDelta)) {
+    process.stdout.write(`  avg ${name} Δ: ${delta > 0 ? '+' : ''}${delta.toFixed(3)}\n`);
+  }
+
+  if (report.regressions > 0) {
+    process.stdout.write(`\nregressions:\n`);
+    for (const pair of report.pairs.filter((p) => p.regressions.length > 0)) {
+      const inputStr = typeof pair.input === 'string' ? pair.input : JSON.stringify(pair.input);
+      process.stdout.write(`  "${inputStr.slice(0, 60)}..."\n`);
+      for (const r of pair.regressions) {
+        process.stdout.write(`    ↓ ${r}\n`);
+      }
+    }
+  }
+
+  if (reportPath) {
+    await writeFile(reportPath, JSON.stringify(report, null, 2), 'utf-8');
+    process.stdout.write(`\nreport written to ${reportPath}\n`);
+  }
+
+  return report.regressions > 0 ? 1 : 0;
+}
+
 // ─── gate ─────────────────────────────────────────────────────────────────────
 
 async function cmdGate(argv: ReadonlyArray<string>): Promise<number> {
@@ -420,6 +548,8 @@ async function main(argv: ReadonlyArray<string>): Promise<number> {
   }
   if (command === 'attack') return cmdAttack(argv.slice(1));
   if (command === 'gate') return cmdGate(argv.slice(1));
+  if (command === 'traces') return cmdTraces(argv.slice(1));
+  if (command === 'compare') return cmdCompare(argv.slice(1));
   if (command === 'capture') return cmdCapture(argv.slice(1));
   if (command === 'freeze-slice') return cmdFreezeSlice(argv.slice(1));
   process.stderr.write(`unknown command: ${command}\nrun "gatelane --help" for usage.\n`);

@@ -14,3 +14,6 @@ export * from './promotion.js';
 export * from './storage.js';
 export * from './storage-fs.js';
 export * from './storage-http.js';
+export * from './tracing.js';
+export * from './trace-store-fs.js';
+export * from './trace-compare.js';
