@@ -301,15 +301,23 @@ pnpm dev              # starts on localhost:5173
 |---|---|
 | `@gatelane/shared` | Common types (CaptureRecord, Dataset, ReplayRun, PromotionReport, Env) and D1 schema |
 | `@gatelane/engine` | Capture SDK, dataset (freeze-slice), replay, compare, audit log, promotion primitive |
+| `@lanefoundry/gatelane-engine` | Unified engine: LLM caller, attack runner, judge, red team, compare, replay, tracing, audit |
+| `@lanefoundry/gatelane-sdk` | Standalone SDK: capture, dataset, gate, promotion, pluggable storage (fs / http) |
+| `gatelane-sdk` (Python) | Python SDK: capture, storage, types |
+| `@lanefoundry/gatelane-cli` | CLI interface (`gatelane` command) |
 | `@gatelane/mode-red-team` | 50+ attack vectors (6 categories), runner, report generator |
 | `@gatelane/mode-backtest` | End-to-end backtest flow (freeze → replay → compare → promote/rollback) |
+| `@lanefoundry/source-prod-slice` | Production slice: freeze-slice, replay-batch, compare-scores, canary-orchestrator, signed-report, audit-export |
 
 ## Repo layout
 
 ```text
 gatelane/
 ├── README.md
+├── Dockerfile                  — Docker image build
+├── docker/                     — Docker entrypoint, supervisord, worker-serve
 ├── eslint.config.mjs           — ESLint 9 flat config (typescript-eslint)
+├── tsconfig.build.json         — TypeScript build config
 ├── vitest.config.ts            — Vitest configuration
 ├── docs/
 │   ├── positioning.md          — wedge, market consolidation, who buys
@@ -317,20 +325,35 @@ gatelane/
 │   ├── strategic-record.md     — why we pivoted from Agent Platform
 │   ├── threat-model.md         — OWASP / MITRE / NIST mapping
 │   ├── attack-library.md       — 50+ attack vectors reference
-│   └── architecture.md         — shared engine internals, data flow, schema
+│   ├── architecture.md         — shared engine internals, data flow, schema
+│   ├── distribution.md         — multi-channel distribution pipeline
+│   └── sdk-parity.md           — cross-SDK (TS / Python) parity tracking
 ├── packages/
+│   ├── shared/                 — common types, D1 schema
 │   ├── engine/                 — capture SDK + dataset + replay + compare + audit log + promotion primitive
+│   ├── gatelane-engine/        — unified engine: LLM caller, attack, judge, red team, tracing
+│   ├── gatelane-sdk/           — standalone SDK: capture, dataset, gate, promotion, pluggable storage
+│   ├── gatelane-sdk-py/        — Python SDK: capture, storage, types
+│   ├── cli/                    — CLI interface (gatelane command)
 │   ├── mode-red-team/          — Mode A: 6 attack categories, 50+ vectors, runner, report
 │   ├── mode-backtest/          — Mode B: dataset replay + compare + promotion gate
-│   └── shared/                 — common types, D1 schema
+│   └── source-prod-slice/      — production slice: freeze, replay-batch, canary, signed-report, audit-export
 ├── apps/
 │   ├── worker/                 — Cloudflare Worker (Hono, capture endpoint + replay API)
 │   └── dashboard/              — React + Vite + TanStack Query (6 pages, hash router)
+├── packaging/
+│   ├── homebrew/               — Homebrew formula + bump script
+│   ├── scoop/                  — Scoop manifest + bump script
+│   ├── winget/                 — WinGet manifest
+│   └── linux/                  — Linux package notes
+├── tools/
+│   └── check-sdk-parity.mjs   — cross-SDK parity checker
 ├── tests/
-│   ├── unit/
-│   ├── integration/
-│   └── e2e/
-├── schema/d1.sql               — D1 database schema (via packages/shared)
+│   └── unit/                   — root-level unit tests
+├── .github/workflows/
+│   ├── ci.yml                  — CI quality gate
+│   ├── release.yml             — GitHub Release automation
+│   └── publish-npm.yml         — npm publish pipeline
 ├── package.json                — pnpm workspace root
 ├── pnpm-workspace.yaml
 └── LICENSE                     — Apache 2.0
@@ -344,6 +367,8 @@ gatelane/
 - [Threat model](docs/threat-model.md) — OWASP Agentic/LLM Top 10, MITRE ATLAS, NIST AI 600-1
 - [Attack library](docs/attack-library.md) — 50+ attack vectors reference
 - [Architecture](docs/architecture.md) — system architecture, data flow, promotion primitive
+- [Distribution](docs/distribution.md) — multi-channel distribution pipeline (Docker / npm / PyPI / package managers)
+- [SDK parity](docs/sdk-parity.md) — cross-SDK (TypeScript / Python) feature parity tracking
 
 ## Status
 
