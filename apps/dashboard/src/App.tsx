@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { CapturesPage } from "./pages/Captures";
+import { TracesPage } from "./pages/Traces";
+import { ComparePage } from "./pages/Compare";
 import { DatasetsPage } from "./pages/Datasets";
 import { ReplayRunsPage } from "./pages/ReplayRuns";
 import { PromotionsPage } from "./pages/Promotions";
@@ -22,6 +24,8 @@ function Router() {
 
   switch (hash) {
     case "#captures": return <CapturesPage />;
+    case "#traces": return <TracesPage />;
+    case "#compare": return <ComparePage />;
     case "#datasets": return <DatasetsPage />;
     case "#replay-runs": return <ReplayRunsPage />;
     case "#promotions": return <PromotionsPage />;

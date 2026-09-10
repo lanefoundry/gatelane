@@ -7,6 +7,7 @@
  *   gatelane attack    — red team attack against a live agent endpoint
  *   gatelane traces    — list and inspect collected traces
  *   gatelane compare   — diff two trace sets (before vs after)
+ *   gatelane rerun     — re-run traces against a new endpoint, then compare
  *   gatelane freeze-slice — freeze a production traffic slice for backtest
  *   gatelane capture   — record a single LLM call to local storage
  *
@@ -21,6 +22,8 @@ import {
   FilesystemStorage,
   HttpStorage,
   FilesystemTraceStore,
+  GatelaneTrace,
+  GatelaneTracer,
   compareTraces,
   type DatasetSourceKind,
   type FrozenDataset,
@@ -68,6 +71,16 @@ Usage:
     --baseline <tag>                       Baseline tag (e.g. "v1")
     --candidate <tag>                      Candidate tag (e.g. "v2")
     --report <path>                        Write JSON report to file
+
+  gatelane rerun [options]                  Re-run traces against new endpoint, then compare
+    --dir <path>                           Trace directory (default: .gatelane/traces)
+    --source-tag <tag>                     Tag of traces to replay (required)
+    --new-tag <tag>                        Tag for new traces (required)
+    --endpoint <url>                       Agent endpoint to replay against (required)
+    --request-template <json>              Request body template, use {{input}} as placeholder
+    --header <key:value>                   HTTP header (repeatable)
+    --concurrency <n>                      Max parallel requests (default: 3)
+    --report <path>                        Write comparison JSON report to file
 
   gatelane capture <json>                  Record a single LLM call
     --dir <path>                           Storage directory (default: .gatelane/captures)
@@ -392,6 +405,162 @@ async function cmdCompare(argv: ReadonlyArray<string>): Promise<number> {
   return report.regressions > 0 ? 1 : 0;
 }
 
+// ─── rerun ────────────────────────────────────────────────────────────────────
+
+async function cmdRerun(argv: ReadonlyArray<string>): Promise<number> {
+  const { multi } = parseArgs(argv);
+  const dir = multi['dir']?.[0] ?? '.gatelane/traces';
+  const sourceTag = multi['source-tag']?.[0];
+  const newTag = multi['new-tag']?.[0];
+  const endpoint = multi['endpoint']?.[0];
+  const templateStr = multi['request-template']?.[0];
+  const headerEntries = multi['header'] ?? [];
+  const concurrency = Number(multi['concurrency']?.[0] ?? '3');
+  const reportPath = multi['report']?.[0];
+
+  if (!sourceTag || !newTag || !endpoint) {
+    process.stderr.write('error: --source-tag, --new-tag, and --endpoint are required\n');
+    process.stderr.write('usage: gatelane rerun --source-tag v1 --new-tag v2 --endpoint <url> [--request-template <json>]\n');
+    return 2;
+  }
+
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  for (const h of headerEntries) {
+    const colonIdx = h.indexOf(':');
+    if (colonIdx === -1) {
+      process.stderr.write(`error: invalid header format "${h}", expected "Key: Value"\n`);
+      return 2;
+    }
+    headers[h.slice(0, colonIdx).trim()] = h.slice(colonIdx + 1).trim();
+  }
+
+  const store = new FilesystemTraceStore(dir);
+  const sourceTraces = await store.list({ tags: [sourceTag] });
+
+  if (sourceTraces.length === 0) {
+    process.stderr.write(`no traces found with tag "${sourceTag}" in ${dir}\n`);
+    return 1;
+  }
+
+  process.stdout.write(`replaying ${sourceTraces.length} traces from [${sourceTag}] → [${newTag}] against ${endpoint}\n`);
+
+  const tracer = new GatelaneTracer(store);
+  const newTraces: GatelaneTrace[] = [];
+  let completed = 0;
+
+  // Build a queue for concurrency-limited execution
+  const queue = [...sourceTraces];
+  async function worker(): Promise<void> {
+    while (queue.length > 0) {
+      const src = queue.shift();
+      if (!src) break;
+
+      const inputStr = typeof src.input === 'string' ? src.input : JSON.stringify(src.input);
+      let body: unknown;
+      if (templateStr) {
+        const escaped = JSON.stringify(inputStr).slice(1, -1);
+        body = JSON.parse(templateStr.replace(/\{\{input\}\}/g, escaped));
+      } else {
+        body = { messages: [{ role: 'user', content: inputStr }] };
+      }
+
+      const trace = tracer.trace({
+        name: src.name,
+        input: src.input,
+        userId: src.userId,
+        tags: [newTag],
+        metadata: { rerunFrom: src.id, endpoint, ...(src.metadata ?? {}) },
+      });
+
+      const span = trace.span({ name: 'rerun-call' });
+      const start = Date.now();
+      let responseText = '';
+      let httpStatus = 0;
+
+      try {
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(body),
+        });
+        httpStatus = res.status;
+        responseText = await res.text();
+      } catch (err) {
+        responseText = `[error] ${err instanceof Error ? err.message : String(err)}`;
+      }
+
+      const latencyMs = Date.now() - start;
+
+      span.generation({
+        name: 'agent-response',
+        model: 'agent',
+        input: body,
+        output: responseText.slice(0, 5000),
+        metadata: { httpStatus, latencyMs },
+      });
+      span.end({ output: { response: responseText.slice(0, 2000), httpStatus } });
+
+      // Carry over source scores so compare can diff (candidate will keep these as-is;
+      // a real judge pass would overwrite them, but that's out of scope for rerun).
+      if (src.scores) {
+        for (const [k, v] of Object.entries(src.scores)) {
+          trace.score(k, v);
+        }
+      }
+
+      trace.end(responseText.slice(0, 2000));
+      tracer.enqueue(trace);
+      newTraces.push(trace);
+
+      completed++;
+      process.stdout.write(`  replaying ${completed}/${sourceTraces.length}...\r`);
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, sourceTraces.length) }, () => worker()),
+  );
+  await tracer.flush();
+
+  process.stdout.write(`\n${completed} traces replayed and saved with tag [${newTag}]\n`);
+
+  // Auto-compare
+  const candidateTraces = newTraces.map((t) => t.toJSON());
+  const report = compareTraces(sourceTraces, candidateTraces, {
+    baselineTag: sourceTag,
+    candidateTag: newTag,
+  });
+
+  process.stdout.write(`\n── comparison: ${sourceTag} vs ${newTag} ──\n`);
+  process.stdout.write(`matched pairs: ${report.totalPairs}\n`);
+  process.stdout.write(`  improvements: ${report.improvements}\n`);
+  process.stdout.write(`  regressions:  ${report.regressions}\n`);
+  process.stdout.write(`  unchanged:    ${report.unchanged}\n`);
+  process.stdout.write(`  avg latency Δ: ${report.summary.avgLatencyDelta.toFixed(0)}ms\n`);
+
+  for (const [name, delta] of Object.entries(report.summary.avgScoreDelta)) {
+    process.stdout.write(`  avg ${name} Δ: ${delta > 0 ? '+' : ''}${delta.toFixed(3)}\n`);
+  }
+
+  if (report.regressions > 0) {
+    process.stdout.write(`\nregressions:\n`);
+    for (const pair of report.pairs.filter((p) => p.regressions.length > 0)) {
+      const inputDisplay = typeof pair.input === 'string' ? pair.input : JSON.stringify(pair.input);
+      process.stdout.write(`  "${inputDisplay.slice(0, 60)}..."\n`);
+      for (const r of pair.regressions) {
+        process.stdout.write(`    ↓ ${r}\n`);
+      }
+    }
+  }
+
+  if (reportPath) {
+    await writeFile(reportPath, JSON.stringify(report, null, 2), 'utf-8');
+    process.stdout.write(`\nreport written to ${reportPath}\n`);
+  }
+
+  return report.regressions > 0 ? 1 : 0;
+}
+
 // ─── gate ─────────────────────────────────────────────────────────────────────
 
 async function cmdGate(argv: ReadonlyArray<string>): Promise<number> {
@@ -550,6 +719,7 @@ async function main(argv: ReadonlyArray<string>): Promise<number> {
   if (command === 'gate') return cmdGate(argv.slice(1));
   if (command === 'traces') return cmdTraces(argv.slice(1));
   if (command === 'compare') return cmdCompare(argv.slice(1));
+  if (command === 'rerun') return cmdRerun(argv.slice(1));
   if (command === 'capture') return cmdCapture(argv.slice(1));
   if (command === 'freeze-slice') return cmdFreezeSlice(argv.slice(1));
   process.stderr.write(`unknown command: ${command}\nrun "gatelane --help" for usage.\n`);
