@@ -83,6 +83,24 @@ CREATE TABLE IF NOT EXISTS promotions (
 
 CREATE INDEX IF NOT EXISTS idx_promotions_replay_run_id ON promotions(replay_run_id);
 
+CREATE TABLE IF NOT EXISTS traces (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  user_id TEXT,
+  session_id TEXT,
+  tags TEXT,            -- JSON array
+  input_preview TEXT,   -- first 200 chars of input for listing
+  scores TEXT,          -- JSON object
+  started_at TEXT NOT NULL,
+  ended_at TEXT,
+  span_count INTEGER DEFAULT 0,
+  generation_count INTEGER DEFAULT 0,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_traces_started_at ON traces(started_at);
+CREATE INDEX IF NOT EXISTS idx_traces_name ON traces(name);
+
 CREATE TABLE IF NOT EXISTS audit_log (
   id TEXT PRIMARY KEY,
   action TEXT NOT NULL CHECK(action IN ('capture', 'freeze', 'replay', 'promote', 'rollback')),
