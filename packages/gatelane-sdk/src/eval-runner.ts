@@ -208,7 +208,98 @@ async function evalAssertion(
       const expected = Number(assertion.value);
       return { type: 'status', expected, actual: httpStatus, passed: httpStatus === expected };
     }
+    case 'json-path': {
+      return evalJsonPath(assertion, response);
+    }
   }
+}
+
+function evalJsonPath(assertion: EvalAssertion, response: string): AssertionResult {
+  const path = assertion.path ?? String(assertion.value);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(response);
+  } catch {
+    return { type: 'json-path', expected: path, actual: '(not JSON)', passed: false, detail: 'response is not valid JSON' };
+  }
+
+  const parts = path.split('.');
+  let cur: unknown = parsed;
+  for (const p of parts) {
+    if (typeof cur !== 'object' || cur === null) {
+      return { type: 'json-path', expected: path, actual: '(missing)', passed: false, detail: `path "${path}" not found` };
+    }
+    cur = (cur as Record<string, unknown>)[p];
+  }
+
+  if (assertion.contains !== undefined) {
+    const arr = Array.isArray(cur) ? cur.map(String) : [String(cur)];
+    const found = arr.some((v) => v.toLowerCase().includes(assertion.contains!.toLowerCase()));
+    return {
+      type: 'json-path',
+      expected: `${path} contains "${assertion.contains}"`,
+      actual: JSON.stringify(cur),
+      passed: found,
+      detail: found ? 'found' : `"${assertion.contains}" not in ${JSON.stringify(cur)}`,
+    };
+  }
+
+  if (assertion.ordered !== undefined) {
+    const arr = Array.isArray(cur) ? cur.map(String) : [];
+    const expected = assertion.ordered;
+    let idx = 0;
+    for (const item of arr) {
+      if (idx < expected.length && item === expected[idx]) idx++;
+    }
+    const passed = idx === expected.length;
+    return {
+      type: 'json-path',
+      expected: `${path} ordered [${expected.join(' → ')}]`,
+      actual: `[${arr.join(', ')}]`,
+      passed,
+      detail: passed ? 'order matches' : `expected order [${expected.join(' → ')}], got [${arr.join(', ')}]`,
+    };
+  }
+
+  if (assertion.gte !== undefined) {
+    const num = Number(cur);
+    return {
+      type: 'json-path',
+      expected: `${path} >= ${assertion.gte}`,
+      actual: num,
+      passed: num >= assertion.gte,
+    };
+  }
+
+  if (assertion.lte !== undefined) {
+    const num = Number(cur);
+    return {
+      type: 'json-path',
+      expected: `${path} <= ${assertion.lte}`,
+      actual: num,
+      passed: num <= assertion.lte,
+    };
+  }
+
+  if (assertion.equals !== undefined) {
+    const actual = typeof cur === 'object' ? JSON.stringify(cur) : String(cur);
+    const expected = typeof assertion.equals === 'object' ? JSON.stringify(assertion.equals) : String(assertion.equals);
+    return {
+      type: 'json-path',
+      expected: `${path} == ${expected}`,
+      actual,
+      passed: actual === expected,
+    };
+  }
+
+  // Default: just check the path exists and is truthy
+  const truthy = cur !== null && cur !== undefined && cur !== '' && cur !== 0 && cur !== false;
+  return {
+    type: 'json-path',
+    expected: `${path} exists`,
+    actual: JSON.stringify(cur),
+    passed: truthy,
+  };
 }
 
 // ─── Main runner ──────────────────────────────────────────────────────────────
@@ -219,6 +310,19 @@ export async function runEval(config: EvalConfig, opts: RunEvalOptions): Promise
 
   // 1. Collect test inputs
   const testCases: EvalTestCase[] = [...(config.tests ?? [])];
+
+  if (config.queries_file) {
+    const { readFile } = await import('node:fs/promises');
+    const content = await readFile(config.queries_file, 'utf-8');
+    const lines = content.split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l && !l.startsWith('#'));
+    for (const line of lines) {
+      if (!testCases.some((tc) => tc.input === line)) {
+        testCases.push({ input: line });
+      }
+    }
+  }
 
   if (config.from_traces) {
     const store = new FilesystemTraceStore(config.from_traces.dir ?? traceDir);
@@ -250,6 +354,7 @@ export async function runEval(config: EvalConfig, opts: RunEvalOptions): Promise
 
     const start = performance.now();
     let response = '';
+    let rawResponse = '';
     let httpStatus = 0;
 
     try {
@@ -259,20 +364,21 @@ export async function runEval(config: EvalConfig, opts: RunEvalOptions): Promise
         body: JSON.stringify(body),
       });
       httpStatus = res.status;
-      const rawText = await res.text();
+      rawResponse = await res.text();
 
       if (config.target.response_path) {
         try {
-          const parsed = JSON.parse(rawText);
+          const parsed = JSON.parse(rawResponse);
           response = extractByPath(parsed, config.target.response_path);
         } catch {
-          response = rawText;
+          response = rawResponse;
         }
       } else {
-        response = rawText;
+        response = rawResponse;
       }
     } catch (err) {
       response = `[error] ${err instanceof Error ? err.message : String(err)}`;
+      rawResponse = response;
     }
 
     const latencyMs = Math.round(performance.now() - start);
@@ -283,7 +389,9 @@ export async function runEval(config: EvalConfig, opts: RunEvalOptions): Promise
 
     if (tc.assert && tc.assert.length > 0) {
       for (const a of tc.assert) {
-        const result = await evalAssertion(a, tc.input, response, httpStatus, latencyMs, config.judge);
+        // json-path assertions need the raw JSON response, not the extracted value
+        const responseForAssertion = a.type === 'json-path' ? rawResponse : response;
+        const result = await evalAssertion(a, tc.input, responseForAssertion, httpStatus, latencyMs, config.judge);
         assertionResults.push(result);
         if (a.type === 'llm-rubric' && typeof result.actual === 'number') {
           judgeScore = result.actual;

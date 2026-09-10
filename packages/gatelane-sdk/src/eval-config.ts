@@ -29,6 +29,7 @@ export interface EvalConfig {
     no_leak?: string[];
     false_positive_tests?: EvalTestCase[];
   };
+  queries_file?: string;
   from_traces?: {
     dir?: string;
     tag: string;
@@ -43,8 +44,14 @@ export interface EvalTestCase {
 }
 
 export interface EvalAssertion {
-  type: 'contains' | 'not-contains' | 'llm-rubric' | 'latency' | 'status';
+  type: 'contains' | 'not-contains' | 'llm-rubric' | 'latency' | 'status' | 'json-path';
   value: string | number;
+  path?: string;
+  contains?: string;
+  ordered?: string[];
+  gte?: number;
+  lte?: number;
+  equals?: unknown;
 }
 
 export function parseEvalConfig(raw: unknown): EvalConfig {
@@ -93,6 +100,12 @@ export function parseEvalConfig(raw: unknown): EvalConfig {
         tc.assert = (t['assert'] as Record<string, unknown>[]).map((a) => ({
           type: a['type'] as EvalAssertion['type'],
           value: a['value'] as string | number,
+          ...(typeof a['path'] === 'string' ? { path: a['path'] } : {}),
+          ...(typeof a['contains'] === 'string' ? { contains: a['contains'] } : {}),
+          ...(Array.isArray(a['ordered']) ? { ordered: a['ordered'] as string[] } : {}),
+          ...(typeof a['gte'] === 'number' ? { gte: a['gte'] } : {}),
+          ...(typeof a['lte'] === 'number' ? { lte: a['lte'] } : {}),
+          ...(a['equals'] !== undefined ? { equals: a['equals'] } : {}),
         }));
       }
       return tc;
@@ -143,6 +156,10 @@ export function parseEvalConfig(raw: unknown): EvalConfig {
         return tc;
       });
     }
+  }
+
+  if (typeof obj['queries_file'] === 'string') {
+    config.queries_file = obj['queries_file'];
   }
 
   if (obj['from_traces'] && typeof obj['from_traces'] === 'object') {
