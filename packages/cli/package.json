@@ -13,7 +13,8 @@
   },
   "dependencies": {
     "@lanefoundry/gatelane-sdk": "workspace:*",
-    "@lanefoundry/gatelane-engine": "workspace:*"
+    "@lanefoundry/gatelane-engine": "workspace:*",
+    "@gatelane/mode-red-team": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

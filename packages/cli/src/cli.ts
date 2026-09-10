@@ -2,37 +2,21 @@
 /**
  * gatelane CLI — promotion gate for AI agents.
  *
- * Real engine runner: replay → judge → compare → sign → evaluate.
- *
- * Usage:
- *   gatelane gate --candidate model:gpt-5 --candidate guardrail:v2 \
- *                      --judges gpt-4o,claude-sonnet \
- *                      [--provider mock|openai|anthropic] \
- *                      [--judge-provider mock|openai|anthropic] \
- *                      [--dataset-source redteam|prod|compliance] \
- *                      [--dataset <frozen-dataset.json>] \
- *                      [--baseline <ref>] [--threshold <n>] [--report <p>]
- *   gatelane freeze-slice --window 7d --output dataset.jsonl \
- *                      --endpoint http://localhost:8787 [--token <capture-token>]
- *   gatelane --help
- *
- * Providers:
- *   mock      — deterministic in-process caller (default, no env needed)
- *   openai    — OpenAI Chat Completions (+ any OpenAI-compatible endpoint)
- *   anthropic — Anthropic Messages API
- *
- * Env:
- *   OPENAI_API_KEY / OPENAI_BASE_URL     (provider=openai; BASE_URL enables
- *                                        DeepSeek / Ollama / vLLM / OpenRouter…)
- *   ANTHROPIC_API_KEY / ANTHROPIC_BASE_URL
- *   GATELANE_ENDPOINT / GATELANE_CAPTURE_TOKEN   (freeze-slice defaults)
+ * Commands:
+ *   gatelane gate      — replay → judge → compare → sign → evaluate
+ *   gatelane attack    — red team attack against a live agent endpoint
+ *   gatelane freeze-slice — freeze a production traffic slice for backtest
+ *   gatelane capture   — record a single LLM call to local storage
  *
  * @see docs/distribution.md
  */
 import { readFile, writeFile } from 'node:fs/promises';
 
 import {
+  capture,
   freezeDataset,
+  setStorage,
+  FilesystemStorage,
   HttpStorage,
   type DatasetSourceKind,
   type FrozenDataset,
@@ -50,31 +34,44 @@ import {
 const HELP = `gatelane — promotion gate for AI agents
 
 Usage:
-  gatelane gate --candidate <ref> [--candidate <ref> ...] --judges <list>
-                [--provider mock|openai|anthropic]
-                [--judge-provider mock|openai|anthropic]
-                [--dataset-source redteam|prod|compliance]
-                [--dataset <frozen-dataset.json>]
-                [--baseline <ref>]
-                [--threshold <n>]
-                [--signing-key <key>]
-                [--report <path>]
-  gatelane freeze-slice --window <7d|24h|30d> --output <path>
-                [--endpoint <worker-url>] [--token <capture-token>]
+  gatelane attack <url> [options]          Attack a live agent endpoint
+    --request-template <json>              Request body template, use {{payload}} as placeholder
+                                           e.g. '{"query": "{{payload}}", "limit": 5}'
+    --header <key:value>                   HTTP header (repeatable)
+    --categories <list>                    Comma-separated attack categories to run
+    --concurrency <n>                      Max parallel requests (default: 5)
+    --report <path>                        Write JSON report to file
+
+  gatelane gate [options]                  Run promotion gate
+    --candidate <ref>                      Candidate to evaluate (repeatable)
+    --judges <list>                        Comma-separated judge models
+    --provider mock|openai|anthropic       LLM provider for candidate replay
+    --judge-provider mock|openai|anthropic LLM provider for judging
+    --dataset-source redteam|prod|compliance
+    --dataset <path>                       Frozen dataset JSON file
+    --baseline <ref>                       Baseline reference
+    --threshold <n>                        Min delta for promotion (0..1, default 0.02)
+    --report <path>                        Write JSON report to file
+
+  gatelane capture <json>                  Record a single LLM call
+    --dir <path>                           Storage directory (default: .gatelane/captures)
+
+  gatelane freeze-slice [options]          Freeze production traffic slice
+    --window <7d|24h|30d>                  Time window
+    --output <path>                        Output file path
+    --endpoint <url>                       Worker endpoint URL
+    --token <token>                        Capture API token
+
   gatelane --help
 
-v0.1.0 — real engine (replay → judge → compare → sign → evaluate).
+Env:
+  OPENAI_API_KEY / OPENAI_BASE_URL        (provider=openai)
+  ANTHROPIC_API_KEY / ANTHROPIC_BASE_URL   (provider=anthropic)
+  GATELANE_ENDPOINT / GATELANE_CAPTURE_TOKEN (freeze-slice / capture defaults)
+
+v0.1.0
 `;
 
-/**
- * Parsed CLI args.
- *
- * - `single` records a key → first value seen.
- * - `multi` records a key → every value seen in order (for repeated flags).
- *
- * Both are `Record<string, string | undefined>` rather than `Map` because keys
- * are static CLI flags known at author time, not runtime-inserted.
- */
 type ParsedArgs = {
   positional: ReadonlyArray<string>;
   single: Record<string, string | boolean>;
@@ -109,22 +106,10 @@ function parseArgs(argv: ReadonlyArray<string>): ParsedArgs {
   return { positional, single, multi };
 }
 
-/** Normalize a provider name from --provider / --judge-provider. */
 function resolveProvider(s: string | undefined): string {
   return (s ?? 'mock').toLowerCase();
 }
 
-/**
- * Build an LLMCaller for the given provider.
- *
- * - `mock`      → deterministic in-process caller (no env needed)
- * - `openai`    → OpenAI Chat Completions; `OPENAI_BASE_URL` pins any
- *                 OpenAI-compatible endpoint (DeepSeek, Ollama, vLLM, OpenRouter…)
- * - `anthropic` → Anthropic Messages API
- *
- * Missing API key for a real provider is a hard error — a user who asked for
- * real calls must not silently get mock responses.
- */
 function makeCaller(provider: string, defaultModel: string): LLMCaller {
   switch (provider) {
     case 'openai': {
@@ -158,7 +143,6 @@ function makeCaller(provider: string, defaultModel: string): LLMCaller {
   }
 }
 
-/** Parse a time window like "7d"/"24h"/"30d" into a `since` ISO timestamp. */
 function sinceFromWindow(window: string): string {
   const m = /^(\d+)([dh])$/.exec(window);
   if (!m) throw new Error(`invalid --window: ${window} (expected e.g. 7d, 24h, 30d)`);
@@ -166,6 +150,121 @@ function sinceFromWindow(window: string): string {
   const ms = m[2] === 'd' ? n * 24 * 60 * 60 * 1000 : n * 60 * 60 * 1000;
   return new Date(Date.now() - ms).toISOString();
 }
+
+// ─── attack ───────────────────────────────────────────────────────────────────
+
+async function cmdAttack(argv: ReadonlyArray<string>): Promise<number> {
+  const { positional, multi } = parseArgs(argv);
+  const url = positional[0];
+
+  if (!url) {
+    process.stderr.write('error: attack requires a target URL\n');
+    process.stderr.write('usage: gatelane attack <url> [--request-template <json>] [--header <k:v>] [--report <path>]\n');
+    return 2;
+  }
+
+  const { allVectors, runAttackBatch, generateReport } = await import('@gatelane/mode-red-team');
+
+  const templateStr = multi['request-template']?.[0];
+  const headerEntries = multi['header'] ?? [];
+  const categoriesStr = multi['categories']?.[0];
+  const concurrency = Number(multi['concurrency']?.[0] ?? '5');
+  const reportPath = multi['report']?.[0];
+
+  const headers: Record<string, string> = {};
+  for (const h of headerEntries) {
+    const colonIdx = h.indexOf(':');
+    if (colonIdx === -1) {
+      process.stderr.write(`error: invalid header format "${h}", expected "Key: Value"\n`);
+      return 2;
+    }
+    headers[h.slice(0, colonIdx).trim()] = h.slice(colonIdx + 1).trim();
+  }
+
+  const buildRequest = templateStr
+    ? (payload: string) => {
+        const escaped = JSON.stringify(payload).slice(1, -1);
+        return JSON.parse(templateStr.replace(/\{\{payload\}\}/g, escaped));
+      }
+    : undefined;
+
+  let vectors = allVectors;
+  if (categoriesStr) {
+    const cats = new Set(categoriesStr.split(',').map((s) => s.trim()));
+    vectors = vectors.filter((v) => cats.has(v.category));
+  }
+
+  process.stdout.write(`attacking ${url} with ${vectors.length} vectors (concurrency=${concurrency})...\n`);
+
+  const target = { url, name: new URL(url).hostname };
+  const results = await runAttackBatch(vectors, target, {
+    headers,
+    buildRequest,
+    concurrency,
+  });
+
+  const report = generateReport(results, [url]);
+
+  const succeeded = report.successfulAttacks;
+  const total = report.totalAttacks;
+  const blocked = total - succeeded;
+  process.stdout.write(`\n── results ──\n`);
+  process.stdout.write(`total: ${total}  |  blocked: ${blocked}  |  bypassed: ${succeeded}\n`);
+
+  if (succeeded > 0) {
+    process.stdout.write(`\nvulnerabilities found:\n`);
+    for (const r of results.filter((r) => r.success)) {
+      process.stdout.write(`  [${r.vectorId}] ${r.payload.slice(0, 80)}...\n`);
+      process.stdout.write(`    response: ${r.agentResponse.slice(0, 120)}...\n`);
+      process.stdout.write(`    patch: ${r.patchRecommendation}\n\n`);
+    }
+  }
+
+  if (reportPath) {
+    await writeFile(reportPath, JSON.stringify(report, null, 2), 'utf-8');
+    process.stdout.write(`report written to ${reportPath}\n`);
+  }
+
+  return succeeded > 0 ? 1 : 0;
+}
+
+// ─── capture ──────────────────────────────────────────────────────────────────
+
+async function cmdCapture(argv: ReadonlyArray<string>): Promise<number> {
+  const { positional, multi } = parseArgs(argv);
+  const jsonStr = positional[0];
+  const dir = multi['dir']?.[0] ?? '.gatelane/captures';
+
+  if (!jsonStr) {
+    process.stderr.write('error: capture requires a JSON argument\n');
+    process.stderr.write('usage: gatelane capture \'{"prompt":[...],"model":"...","response":"..."}\' [--dir <path>]\n');
+    return 2;
+  }
+
+  let data: { prompt: { role: string; content: string }[]; model?: string; response?: unknown; metadata?: Record<string, unknown> };
+  try {
+    data = JSON.parse(jsonStr);
+  } catch {
+    process.stderr.write('error: invalid JSON\n');
+    return 2;
+  }
+
+  setStorage(new FilesystemStorage({ dir }));
+
+  const result = await capture(
+    {
+      prompt: data.prompt,
+      model: data.model,
+      metadata: data.metadata,
+    },
+    async () => data.response ?? null,
+  );
+
+  process.stdout.write(`captured to ${dir} (response: ${JSON.stringify(result).slice(0, 100)})\n`);
+  return 0;
+}
+
+// ─── gate ─────────────────────────────────────────────────────────────────────
 
 async function cmdGate(argv: ReadonlyArray<string>): Promise<number> {
   const { multi } = parseArgs(argv);
@@ -208,7 +307,6 @@ async function cmdGate(argv: ReadonlyArray<string>): Promise<number> {
     });
   }
 
-  // Candidate caller drives the replay; per-judge callers drive judging.
   const candidateCaller = makeCaller(provider, candidates[0]?.replace(/^model:/, '') ?? '');
   const judgeCallers: Record<string, LLMCaller> = {};
   for (const judgeRef of judges) {
@@ -270,6 +368,8 @@ async function cmdGate(argv: ReadonlyArray<string>): Promise<number> {
   }
 }
 
+// ─── freeze-slice ─────────────────────────────────────────────────────────────
+
 async function cmdFreezeSlice(argv: ReadonlyArray<string>): Promise<number> {
   const { multi } = parseArgs(argv);
   const window = multi['window']?.[0] ?? '7d';
@@ -293,7 +393,6 @@ async function cmdFreezeSlice(argv: ReadonlyArray<string>): Promise<number> {
   const storage = new HttpStorage({ endpoint, token });
   const captures = await storage.list({ since, limit: 1000 });
 
-  // One user prompt → one dataset item. Multi-message prompts serialize as-is.
   const items = captures.map((c) => ({
     id: c.id,
     input: c.input.prompt.length === 1
@@ -311,15 +410,19 @@ async function cmdFreezeSlice(argv: ReadonlyArray<string>): Promise<number> {
   return 0;
 }
 
+// ─── main ─────────────────────────────────────────────────────────────────────
+
 async function main(argv: ReadonlyArray<string>): Promise<number> {
   const command = argv[0];
   if (command === undefined || command === '--help' || command === '-h') {
     process.stdout.write(HELP);
     return 0;
   }
+  if (command === 'attack') return cmdAttack(argv.slice(1));
   if (command === 'gate') return cmdGate(argv.slice(1));
+  if (command === 'capture') return cmdCapture(argv.slice(1));
   if (command === 'freeze-slice') return cmdFreezeSlice(argv.slice(1));
-  process.stderr.write(`unknown command: ${command}\n`);
+  process.stderr.write(`unknown command: ${command}\nrun "gatelane --help" for usage.\n`);
   return 2;
 }
 

@@ -18,6 +18,7 @@ export interface AttackResult {
   patchRecommendation: string;
   latencyMs: number;
   timestamp: string;
+  httpStatus?: number;
 }
 
 export interface AttackReport {
@@ -27,4 +28,13 @@ export interface AttackReport {
   successfulAttacks: number;
   results: AttackResult[];
   createdAt: string;
+}
+
+export interface AttackOptions {
+  headers?: Record<string, string>;
+  buildRequest?: (payload: string) => unknown;
+  parseResponse?: (body: string, status: number) => string;
+  successIndicators?: string[];
+  refusalIndicators?: string[];
+  concurrency?: number;
 }
