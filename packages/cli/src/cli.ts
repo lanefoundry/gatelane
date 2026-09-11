@@ -22,9 +22,7 @@ import {
   capture,
   freezeDataset,
   setStorage,
-  FilesystemStorage,
   HttpStorage,
-  FilesystemTraceStore,
   GatelaneTrace,
   GatelaneTracer,
   compareTraces,
@@ -34,6 +32,8 @@ import {
   type FrozenDataset,
   type RedteamRunner,
 } from '@lanefoundry/gatelane-sdk';
+import { FilesystemStorage } from '@lanefoundry/gatelane-sdk/storage-fs';
+import { FilesystemTraceStore } from '@lanefoundry/gatelane-sdk/trace-store-fs';
 
 import { freezeInjectionDataset } from '@lanefoundry/gatelane-engine/attack';
 import {

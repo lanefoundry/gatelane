@@ -51,6 +51,41 @@
       "types": "./dist/storage-http.d.ts",
       "import": "./dist/storage-http.js",
       "source": "./src/storage-http.ts"
+    },
+    "./tracing": {
+      "types": "./dist/tracing.d.ts",
+      "import": "./dist/tracing.js",
+      "source": "./src/tracing.ts"
+    },
+    "./trace-store-fs": {
+      "types": "./dist/trace-store-fs.d.ts",
+      "import": "./dist/trace-store-fs.js",
+      "source": "./src/trace-store-fs.ts"
+    },
+    "./trace-store-http": {
+      "types": "./dist/trace-store-http.d.ts",
+      "import": "./dist/trace-store-http.js",
+      "source": "./src/trace-store-http.ts"
+    },
+    "./trace-compare": {
+      "types": "./dist/trace-compare.d.ts",
+      "import": "./dist/trace-compare.js",
+      "source": "./src/trace-compare.ts"
+    },
+    "./eval-config": {
+      "types": "./dist/eval-config.d.ts",
+      "import": "./dist/eval-config.js",
+      "source": "./src/eval-config.ts"
+    },
+    "./eval-runner": {
+      "types": "./dist/eval-runner.d.ts",
+      "import": "./dist/eval-runner.js",
+      "source": "./src/eval-runner.ts"
+    },
+    "./node": {
+      "types": "./dist/node.d.ts",
+      "import": "./dist/node.js",
+      "source": "./src/node.ts"
     }
   },
   "publishConfig": {
