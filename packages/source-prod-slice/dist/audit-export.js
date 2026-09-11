@@ -46,7 +46,7 @@ function exportJson(report, decision, dataset, includeJudgeMatrix, includeMetric
     };
 }
 /** Export as CSV (one row per candidate). */
-function exportCsv(report, decision, dataset, includeJudgeMatrix, includeMetrics, includeDataset) {
+function exportCsv(report, decision, dataset, _includeJudgeMatrix, _includeMetrics, _includeDataset) {
     const rows = [];
     const headers = [
         'report_id',
@@ -83,7 +83,7 @@ function exportCsv(report, decision, dataset, includeJudgeMatrix, includeMetrics
         'signature',
     ];
     rows.push(headers);
-    const { candidate_metrics, candidate_shas, judge_shas, judge_matrix, policy, baseline_metrics, scorer_code_sha } = report;
+    const { candidate_metrics, candidate_shas, judge_shas, judge_matrix, policy } = report;
     const firstJudgeKey = Object.keys(judge_shas)[0];
     for (const candidateRef of Object.keys(candidate_metrics)) {
         const metric = candidate_metrics[candidateRef];
@@ -178,10 +178,11 @@ function exportCsv(report, decision, dataset, includeJudgeMatrix, includeMetrics
 }
 /** Escape a value for CSV. */
 function escapeCsv(value) {
-    if (value.includes(',') || value.includes('"') || value.includes('\n')) {
-        return '"' + value.replace(/"/g, '""') + '"';
+    const s = value ?? '';
+    if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+        return '"' + s.replace(/"/g, '""') + '"';
     }
-    return value;
+    return s;
 }
 /** Strip optional fields from report for smaller exports. */
 function stripReport(report, includeJudgeMatrix, includeMetrics) {
@@ -254,7 +255,7 @@ export function exportAuditBatch(reports, format = 'csv') {
     ];
     allRows.push(headers);
     for (const { report, decision, dataset } of reports) {
-        const { candidate_metrics, candidate_shas, judge_shas, judge_matrix, policy } = report;
+        const { candidate_metrics, candidate_shas, judge_matrix, policy } = report;
         for (const candidateRef of Object.keys(candidate_metrics)) {
             const metric = candidate_metrics[candidateRef];
             if (!metric)

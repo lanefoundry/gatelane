@@ -113,7 +113,7 @@ packages/gatelane-engine/                    # @lanefoundry/gatelane-engine (ser
 - [x] PromotionPolicy evaluator: min_delta + judge_stability + cost_ceiling + latency_ceiling → promote / rollback / hold_for_review
 - [x] SDK `setGateRunner(...)` wires the engine; SDK without runner still produces a deterministic stub
 - [x] Tests: 17 engine tests + 30 SDK/worker tests = 47 vitest passing
-- [ ] Real OpenAI / Anthropic LLMCaller impls (W2.5 or W4) — only MockLLMCaller today
+- [x] Real OpenAI / Anthropic LLMCaller impls — OpenAIChatCaller + AnthropicCaller in llm.ts
 - [ ] AuditLogEntry signing — currently `AuditLogEntry` records events but they're not signed
 - [ ] OTel span emission for `gate.replay` / `gate.compare` / `gate.promote` — span_kind field exists but no exporter wired
 

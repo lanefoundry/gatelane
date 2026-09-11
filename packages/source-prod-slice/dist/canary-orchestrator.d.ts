@@ -6,7 +6,8 @@
  *
  * @see docs/prd.md §5.1 — The gate (auto_rollback_rule)
  */
-import type { PromotionPolicy, PromotionReport, PromotionDecision } from '@lanefoundry/gatelane-sdk/promotion';
+import type { PromotionReport, PromotionDecision } from '@lanefoundry/gatelane-sdk/promotion';
+import type { D1DatabaseLike } from '@lanefoundry/gatelane-sdk';
 /** Canary deployment state. */
 export type CanaryState = 'pending' | 'canary' | 'observing' | 'promoting' | 'promoted' | 'rolled_back' | 'failed';
 /** Canary deployment record (persisted in D1). */
@@ -134,13 +135,9 @@ export declare function getActiveCanaries(): Promise<ReadonlyArray<CanaryRecord>
  * Returns records that changed state.
  */
 export declare function tickCanaries(): Promise<ReadonlyArray<CanaryRecord>>;
-/**
- * D1 storage implementation (for Cloudflare Workers).
- * Requires @cloudflare/workers-types and a D1 database binding.
- */
 export declare class D1CanaryStorage implements CanaryStorage {
     private readonly db;
-    constructor(db: any);
+    constructor(db: D1DatabaseLike);
     create(record: CanaryRecord): Promise<void>;
     read(id: string): Promise<CanaryRecord | null>;
     update(record: CanaryRecord): Promise<void>;

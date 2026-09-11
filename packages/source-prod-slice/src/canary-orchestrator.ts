@@ -7,7 +7,7 @@
  * @see docs/prd.md §5.1 — The gate (auto_rollback_rule)
  */
 
-import type { PromotionReport, PromotionDecision } from '@lanefoundry/gatelane-sdk/promotion';
+import type { PromotionReport, PromotionDecision, PromotionPolicy } from '@lanefoundry/gatelane-sdk/promotion';
 import type { D1DatabaseLike } from '@lanefoundry/gatelane-sdk';
 
 /** Canary deployment state. */
@@ -396,7 +396,7 @@ export class D1CanaryStorage implements CanaryStorage {
   }
 
   async read(id: string): Promise<CanaryRecord | null> {
-    const row = await this.db.prepare('SELECT * FROM canary_deployments WHERE id = ?').bind(id).first();
+    const row = await this.db.prepare('SELECT * FROM canary_deployments WHERE id = ?').bind(id).first() as CanaryRow | null;
     if (!row) return null;
     return this.rowToRecord(row);
   }
@@ -432,7 +432,7 @@ export class D1CanaryStorage implements CanaryStorage {
       sql += ' LIMIT ?';
     }
     const { results } = await this.db.prepare(sql).bind(...params).all();
-    return (results ?? []).map((row: CanaryRow) => this.rowToRecord(row));
+    return (results as CanaryRow[] ?? []).map((row) => this.rowToRecord(row));
   }
 
   private rowToRecord(row: CanaryRow): CanaryRecord {
@@ -443,11 +443,11 @@ export class D1CanaryStorage implements CanaryStorage {
       state: row.state,
       trafficPercent: row.traffic_percent,
       startedAt: row.started_at,
-      observationEndsAt: row.observation_ends_at,
-      completedAt: row.completed_at,
+      observationEndsAt: row.observation_ends_at ?? undefined,
+      completedAt: row.completed_at ?? undefined,
       autoRollbackRule: row.auto_rollback_rule ? JSON.parse(row.auto_rollback_rule) : undefined,
       observations: JSON.parse(row.observations),
-      error: row.error,
+      error: row.error ?? undefined,
       report: JSON.parse(row.report),
       decision: JSON.parse(row.decision),
     };

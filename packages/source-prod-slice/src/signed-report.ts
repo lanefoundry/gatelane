@@ -15,7 +15,7 @@ import type {
 } from '@lanefoundry/gatelane-sdk';
 import type { FrozenDataset } from '@lanefoundry/gatelane-sdk';
 import type { CandidateMetric } from '@lanefoundry/gatelane-engine';
-import { signReport, canonicalizeReport } from '@lanefoundry/gatelane-engine';
+import { signReport, canonicalizeReport, verifyReport } from '@lanefoundry/gatelane-engine';
 import { shaOfCandidateRef } from '@lanefoundry/gatelane-sdk';
 
 /** Input for building a signed PromotionReport. */
@@ -139,7 +139,6 @@ export async function buildSignedReport(args: SignedReportArgs): Promise<SignedR
  * Returns true if the signature matches the canonical JSON.
  */
 export async function verifySignedReport(report: PromotionReport, signingKey: string): Promise<boolean> {
-  const { verifyReport } = await import('@lanefoundry/gatelane-engine/sign');
   return verifyReport(report, signingKey);
 }
 

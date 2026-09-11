@@ -218,13 +218,9 @@ export async function tickCanaries() {
     }
     return changed;
 }
-/**
- * D1 storage implementation (for Cloudflare Workers).
- * Requires @cloudflare/workers-types and a D1 database binding.
- */
 export class D1CanaryStorage {
     db;
-    constructor(db /* D1Database */) {
+    constructor(db) {
         this.db = db;
     }
     async create(record) {
@@ -253,7 +249,6 @@ export class D1CanaryStorage {
         sql += ' ORDER BY started_at DESC';
         if (filter?.limit) {
             sql += ' LIMIT ?';
-            params.push(filter.limit);
         }
         const { results } = await this.db.prepare(sql).bind(...params).all();
         return (results ?? []).map((row) => this.rowToRecord(row));

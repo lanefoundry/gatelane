@@ -249,11 +249,12 @@ function exportCsv(
 }
 
 /** Escape a value for CSV. */
-function escapeCsv(value: string): string {
-  if (value.includes(',') || value.includes('"') || value.includes('\n')) {
-    return '"' + value.replace(/"/g, '""') + '"';
+function escapeCsv(value: string | undefined | null): string {
+  const s = value ?? '';
+  if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+    return '"' + s.replace(/"/g, '""') + '"';
   }
-  return value;
+  return s;
 }
 
 /** Strip optional fields from report for smaller exports. */

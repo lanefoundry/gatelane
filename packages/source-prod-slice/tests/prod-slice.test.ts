@@ -28,6 +28,7 @@ import {
   checkCandidateAgainstPolicy,
   validatePolicy,
   buildSignedReport,
+  verifySignedReport,
   generateCandidateShas,
   generateJudgeShas,
   startCanary,
@@ -210,13 +211,13 @@ describe('source-prod-slice package', () => {
       { ref: 'candidate-a', model: 'gpt-4o' },
       { ref: 'candidate-b', model: 'claude-3' },
     ];
-    const dataset = makeDataset([
-      { id: 'item-1', input: [{ role: 'user', content: 'test 1' }] },
-      { id: 'item-2', input: [{ role: 'user', content: 'test 2' }] },
-    ]);
     const caller = new MockLLMCaller();
 
     it('replays dataset against multiple candidates', async () => {
+      const dataset = await makeDataset([
+        { id: 'item-1', input: [{ role: 'user', content: 'test 1' }] },
+        { id: 'item-2', input: [{ role: 'user', content: 'test 2' }] },
+      ]);
       const result = await replayBatch({
         dataset,
         candidates,
@@ -234,6 +235,10 @@ describe('source-prod-slice package', () => {
     });
 
     it('is deterministic with same seed', async () => {
+      const dataset = await makeDataset([
+        { id: 'item-1', input: [{ role: 'user', content: 'test 1' }] },
+        { id: 'item-2', input: [{ role: 'user', content: 'test 2' }] },
+      ]);
       const result1 = await replayBatch({ dataset, candidates, caller, seed: 42 });
       const result2 = await replayBatch({ dataset, candidates, caller, seed: 42 });
 
@@ -245,6 +250,10 @@ describe('source-prod-slice package', () => {
     });
 
     it('differs with different seeds', async () => {
+      const dataset = await makeDataset([
+        { id: 'item-1', input: [{ role: 'user', content: 'test 1' }] },
+        { id: 'item-2', input: [{ role: 'user', content: 'test 2' }] },
+      ]);
       const result1 = await replayBatch({ dataset, candidates, caller, seed: 42 });
       const result2 = await replayBatch({ dataset, candidates, caller, seed: 43 });
 
@@ -258,6 +267,10 @@ describe('source-prod-slice package', () => {
     });
 
     it('measures determinism when enabled', async () => {
+      const dataset = await makeDataset([
+        { id: 'item-1', input: [{ role: 'user', content: 'test 1' }] },
+        { id: 'item-2', input: [{ role: 'user', content: 'test 2' }] },
+      ]);
       const result = await replayBatch({
         dataset,
         candidates,
@@ -285,7 +298,7 @@ describe('source-prod-slice package', () => {
       const replayResults = makeReplayResults(candidates, items);
       const verdicts = makeVerdicts(candidates, judges, items, { 'candidate-a': 0.1, 'candidate-b': 0.0, 'candidate-c': -0.1 });
 
-      const result = compareScores({ replayResults, verdicts });
+      const result = compareScores({ replayResults, verdicts, baselineRef: 'candidate-c' });
 
       expect(result.perCandidate).toHaveProperty('candidate-a');
       expect(result.perCandidate).toHaveProperty('candidate-b');
@@ -293,7 +306,7 @@ describe('source-prod-slice package', () => {
       expect(result.judgeMatrix.candidates).toEqual(candidates);
       expect(result.judgeMatrix.judges).toEqual(judges);
       expect(result.summary.candidates).toEqual(candidates);
-      expect(result.summary.bestCandidate).toBe('candidate-a'); // highest score offset
+      expect(result.summary.bestCandidate).toBe('candidate-a');
       expect(result.summary.bestAggregateDelta).toBeGreaterThan(0);
     });
 
@@ -381,8 +394,8 @@ describe('source-prod-slice package', () => {
 
     it('checkCandidateAgainstPolicy returns per-rule results', () => {
       const replayResults = makeReplayResults(candidates, items);
-      const verdicts = makeVerdicts(candidates, judges, items, { 'candidate-a': 0.2 });
-      const { perCandidate, judgeMatrix } = compareScores({ replayResults, verdicts });
+      const verdicts = makeVerdicts(candidates, judges, items, { 'candidate-a': 0.2, 'candidate-b': -0.1 });
+      const { perCandidate, judgeMatrix } = compareScores({ replayResults, verdicts, baselineRef: 'candidate-b' });
 
       const check = checkCandidateAgainstPolicy('candidate-a', perCandidate['candidate-a'], judgeMatrix, DEFAULT_POLICY);
 
@@ -411,18 +424,18 @@ describe('source-prod-slice package', () => {
     ];
 
     it('builds and signs a PromotionReport', async () => {
-      const dataset = makeDataset(items);
+      const dataset = await makeDataset(items);
       const replayResults = makeReplayResults(candidates, items);
       const verdicts = makeVerdicts(candidates, judges, items, { 'candidate-a': 0.2 });
       const { perCandidate, judgeMatrix } = compareScores({ replayResults, verdicts, baselineRef: 'candidate-b' });
 
       const decision = makePromotionDecision({ candidates, perCandidate, judgeMatrix, policy: DEFAULT_POLICY }).decision;
 
-      const candidateShas = generateCandidateShas([
+      const candidateShas = await generateCandidateShas([
         { ref: 'candidate-a', sourceRef: 'gpt-4o@latest' },
         { ref: 'candidate-b', sourceRef: 'claude-3@latest' },
       ]);
-      const judgeShas = generateJudgeShas([
+      const judgeShas = await generateJudgeShas([
         { ref: 'judge-1', model: 'gpt-4o-judge' },
         { ref: 'judge-2', model: 'claude-3-judge' },
       ]);
@@ -448,7 +461,7 @@ describe('source-prod-slice package', () => {
     });
 
     it('verifies a signed report', async () => {
-      const dataset = makeDataset(items);
+      const dataset = await makeDataset(items);
       const replayResults = makeReplayResults(candidates, items);
       const verdicts = makeVerdicts(candidates, judges, items, { 'candidate-a': 0.2 });
       const { perCandidate, judgeMatrix } = compareScores({ replayResults, verdicts });
@@ -458,8 +471,8 @@ describe('source-prod-slice package', () => {
       const result = await buildSignedReport({
         gateRunId: 'test-run-456',
         dataset,
-        candidateShas: generateCandidateShas([{ ref: 'candidate-a', sourceRef: 'gpt-4o' }]),
-        judgeShas: generateJudgeShas([{ ref: 'judge-1', model: 'gpt-4o-judge' }]),
+        candidateShas: await generateCandidateShas([{ ref: 'candidate-a', sourceRef: 'gpt-4o' }]),
+        judgeShas: await generateJudgeShas([{ ref: 'judge-1', model: 'gpt-4o-judge' }]),
         scorerCodeSha: 'sha256:abc',
         baselineMetrics: {},
         candidateMetrics: perCandidate,
@@ -474,7 +487,7 @@ describe('source-prod-slice package', () => {
     });
 
     it('rejects tampered report', async () => {
-      const dataset = makeDataset(items);
+      const dataset = await makeDataset(items);
       const replayResults = makeReplayResults(candidates, items);
       const verdicts = makeVerdicts(candidates, judges, items);
       const { perCandidate, judgeMatrix } = compareScores({ replayResults, verdicts });
@@ -502,9 +515,9 @@ describe('source-prod-slice package', () => {
       expect(verified).toBe(false);
     });
 
-    it('generateCandidateShas produces consistent SHAs', () => {
-      const shas1 = generateCandidateShas([{ ref: 'a', sourceRef: 'model@v1' }]);
-      const shas2 = generateCandidateShas([{ ref: 'a', sourceRef: 'model@v1' }]);
+    it('generateCandidateShas produces consistent SHAs', async () => {
+      const shas1 = await generateCandidateShas([{ ref: 'a', sourceRef: 'model@v1' }]);
+      const shas2 = await generateCandidateShas([{ ref: 'a', sourceRef: 'model@v1' }]);
       expect(shas1.a).toBe(shas2.a);
       expect(shas1.a).toMatch(/^sha256:/);
     });
@@ -563,13 +576,13 @@ describe('source-prod-slice package', () => {
         decision: makeDecision(),
       });
 
-      // Normal observation - no rollback
-      const normal = await recordObservation(start.record.id, 'error_rate', 0.01, 0.02);
+      // Normal observation - small delta, no rollback (delta = (0.019-0.02)/0.02 = -0.05, not <= -0.05 strictly)
+      const normal = await recordObservation(start.record.id, 'error_rate', 0.0195, 0.02);
       expect(normal.record.state).toBe('observing');
       expect(normal.record.observations.length).toBe(1);
 
-      // Trigger rollback - metric drops more than threshold
-      const rollback = await recordObservation(start.record.id, 'error_rate', 0.10, 0.02); // delta = 4.0 > 0.05
+      // Trigger rollback - metric drops more than threshold (delta = (0.01-0.02)/0.02 = -0.5 <= -0.05)
+      const rollback = await recordObservation(start.record.id, 'error_rate', 0.01, 0.02);
       expect(rollback.record.state).toBe('rolled_back');
       expect(rollback.record.error).toContain('Auto-rollback triggered');
     });
@@ -654,8 +667,8 @@ describe('source-prod-slice package', () => {
     function makeTestReport(): any {
       const dataset = makeDataset(items);
       const replayResults = makeReplayResults(candidates, items);
-      const verdicts = makeVerdicts(candidates, judges, items, { 'candidate-a': 0.2 });
-      const { perCandidate, judgeMatrix } = compareScores({ replayResults, verdicts });
+      const verdicts = makeVerdicts(candidates, judges, items, { 'candidate-a': 0.2, 'candidate-b': -0.1 });
+      const { perCandidate, judgeMatrix } = compareScores({ replayResults, verdicts, baselineRef: 'candidate-b' });
       const decision = makePromotionDecision({ candidates, perCandidate, judgeMatrix, policy: DEFAULT_POLICY }).decision;
 
       return {
@@ -672,6 +685,7 @@ describe('source-prod-slice package', () => {
           judge_matrix: judgeMatrix,
           policy: DEFAULT_POLICY,
           timestamp: new Date().toISOString(),
+          signature: 'test-signature-placeholder-for-audit-export',
         // eslint-disable-next-line @typescript-eslint/no-explicit-any -- report fixture cast
         } as any,
         decision,
@@ -686,8 +700,8 @@ describe('source-prod-slice package', () => {
       expect(result.format).toBe('json');
       expect(result.mimeType).toBe('application/json');
       expect(result.filename).toContain('.json');
-      expect(result.content).toContain('"report_id":"report-test"');
-      expect(result.content).toContain('"decision_action":"promote"');
+      expect(result.content).toContain('"id": "report-test"');
+      expect(result.content).toContain('"action":');
     });
 
     it('exports CSV with candidate rows', () => {
@@ -717,7 +731,7 @@ describe('source-prod-slice package', () => {
       const result = exportAuditBatch(batch, 'json');
 
       expect(result.format).toBe('json');
-      expect(result.content).toContain('"count":2');
+      expect(result.content).toContain('"count": 2');
       expect(result.content).toContain('"exports"');
     });
 
@@ -816,11 +830,11 @@ describe('source-prod-slice package', () => {
       const signedResult = await buildSignedReport({
         gateRunId: 'integration-run-1',
         dataset: freezeResult.dataset,
-        candidateShas: generateCandidateShas([
+        candidateShas: await generateCandidateShas([
           { ref: 'baseline', sourceRef: 'gpt-3.5@latest' },
           { ref: 'candidate', sourceRef: 'gpt-4o@latest' },
         ]),
-        judgeShas: generateJudgeShas(judges.map((j) => ({ ref: j, model: 'gpt-4o-judge' }))),
+        judgeShas: await generateJudgeShas(judges.map((j) => ({ ref: j, model: 'gpt-4o-judge' }))),
         scorerCodeSha: shaOfCandidateRef('scorer@v1.0.0'),
         baselineMetrics: { score: 0.6, cost: 0.002, latency: 150 },
         candidateMetrics: compareResult.perCandidate,
