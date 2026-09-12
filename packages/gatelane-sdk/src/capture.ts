@@ -98,13 +98,13 @@ export async function capture<T>(
   };
 
   // Fire-and-await: a capture write failure must not break the user's call.
-  // The Worker is the source of truth; SDK surfaces the error to stderr but
-  // does NOT throw, so a flaky network does not turn into a broken agent.
+  // The Worker is the source of truth; SDK surfaces the error but does NOT
+  // throw, so a flaky network does not turn into a broken agent.
   try {
     await getStorage().write(record);
   } catch (err) {
-    process.stderr.write(
-      `[gatelane] capture write failed (record id=${record.id}): ${err instanceof Error ? err.message : String(err)}\n`,
+    console.warn(
+      `[gatelane] capture write failed (record id=${record.id}): ${err instanceof Error ? err.message : String(err)}`,
     );
   }
 

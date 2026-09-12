@@ -228,8 +228,8 @@ export class GatelaneTracer {
   /** Queue a completed trace for storage. Non-blocking — errors go to stderr. */
   enqueue(trace: GatelaneTrace): void {
     const p = this._store.write(trace.toJSON()).catch((err) => {
-      process.stderr.write(
-        `[gatelane] trace write failed: ${err instanceof Error ? err.message : String(err)}\n`,
+      console.warn(
+        `[gatelane] trace write failed: ${err instanceof Error ? err.message : String(err)}`,
       );
     });
     this._pending.push(p);

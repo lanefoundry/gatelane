@@ -312,6 +312,7 @@ export async function runEval(config: EvalConfig, opts: RunEvalOptions): Promise
   const testCases: EvalTestCase[] = [...(config.tests ?? [])];
 
   if (config.queries_file) {
+    // Node-only: dynamic import of node:fs; only used by the CLI, not application code.
     const { readFile } = await import('node:fs/promises');
     const content = await readFile(config.queries_file, 'utf-8');
     const lines = content.split('\n')
