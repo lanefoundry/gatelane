@@ -105,6 +105,14 @@ Usage:
   gatelane capture <json>                  Record a single LLM call
     --dir <path>                           Storage directory (default: .gatelane/captures)
 
+  gatelane import-captures [options]       Import captures as traces for eval/compare
+    --source <path>                        Capture directory (filesystem)
+    --endpoint <url>                       Worker endpoint (HTTP mode)
+    --token <token>                        Capture API token (HTTP mode)
+    --tag <tag>                            Tag for imported traces (required)
+    --limit <n>                            Max captures to import (default: 50)
+    --dir <path>                           Trace output directory (default: .gatelane/traces)
+
   gatelane freeze-slice [options]          Freeze production traffic slice
     --window <7d|24h|30d>                  Time window
     --output <path>                        Output file path
@@ -985,6 +993,73 @@ async function cmdGate(argv: ReadonlyArray<string>): Promise<number> {
   }
 }
 
+// ─── import-captures ─────────────────────────────────────────────────────────
+
+async function cmdImportCaptures(argv: ReadonlyArray<string>): Promise<number> {
+  const { multi } = parseArgs(argv);
+  const source = multi['source']?.[0];
+  const endpoint = multi['endpoint']?.[0];
+  const token = multi['token']?.[0];
+  const tag = multi['tag']?.[0];
+  const limit = Number(multi['limit']?.[0] ?? '50');
+  const traceDir = multi['dir']?.[0] ?? '.gatelane/traces';
+
+  if (!tag) {
+    process.stderr.write('error: --tag is required\n');
+    process.stderr.write('usage: gatelane import-captures --source ./captures --tag prod-week-1\n');
+    process.stderr.write('   or: gatelane import-captures --endpoint <url> --token <token> --tag prod-week-1\n');
+    return 2;
+  }
+
+  if (!source && !endpoint) {
+    process.stderr.write('error: --source <path> or --endpoint <url> is required\n');
+    return 2;
+  }
+
+  const { capturesToTraces } = await import('@lanefoundry/gatelane-sdk/capture-bridge');
+
+  let captures: ReadonlyArray<import('@lanefoundry/gatelane-sdk').CaptureRecord>;
+
+  if (endpoint) {
+    const captureToken = token ?? process.env.GATELANE_CAPTURE_TOKEN;
+    if (!captureToken) {
+      process.stderr.write('error: --token or GATELANE_CAPTURE_TOKEN is required for HTTP mode\n');
+      return 2;
+    }
+    const storage = new HttpStorage({ endpoint, token: captureToken });
+    captures = await storage.list({ limit });
+  } else {
+    const storage = new FilesystemStorage({ dir: source! });
+    captures = await storage.list({ limit });
+  }
+
+  if (captures.length === 0) {
+    process.stdout.write('no captures found\n');
+    return 0;
+  }
+
+  const traces = capturesToTraces(captures, tag);
+  const store = new FilesystemTraceStore(traceDir);
+  const tracer = new GatelaneTracer(store);
+
+  for (const t of traces) {
+    const trace = tracer.trace({
+      name: t.name,
+      input: t.input,
+      tags: t.tags,
+      metadata: t.metadata,
+    });
+    if (t.output !== undefined) trace.end(t.output);
+    tracer.enqueue(trace);
+  }
+
+  await tracer.flush();
+
+  process.stdout.write(`imported ${traces.length} captures → ${traceDir} with tag [${tag}]\n`);
+  process.stdout.write(`next: gatelane eval --from-traces-tag ${tag} or gatelane compare\n`);
+  return 0;
+}
+
 // ─── freeze-slice ─────────────────────────────────────────────────────────────
 
 async function cmdFreezeSlice(argv: ReadonlyArray<string>): Promise<number> {
@@ -1043,6 +1118,7 @@ async function main(argv: ReadonlyArray<string>): Promise<number> {
   if (command === 'compare') return cmdCompare(argv.slice(1));
   if (command === 'rerun') return cmdRerun(argv.slice(1));
   if (command === 'capture') return cmdCapture(argv.slice(1));
+  if (command === 'import-captures') return cmdImportCaptures(argv.slice(1));
   if (command === 'freeze-slice') return cmdFreezeSlice(argv.slice(1));
   process.stderr.write(`unknown command: ${command}\nrun "gatelane --help" for usage.\n`);
   return 2;

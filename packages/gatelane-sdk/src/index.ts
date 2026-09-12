@@ -23,3 +23,4 @@ export * from './trace-store-http.js';
 export * from './trace-compare.js';
 export * from './eval-config.js';
 export * from './eval-runner.js';
+export * from './capture-bridge.js';

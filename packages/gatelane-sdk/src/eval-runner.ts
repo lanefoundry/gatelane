@@ -339,6 +339,31 @@ export async function runEval(config: EvalConfig, opts: RunEvalOptions): Promise
     }
   }
 
+  if (config.from_captures) {
+    const { capturesToTraces } = await import('./capture-bridge.js');
+    const fc = config.from_captures;
+    let captures: ReadonlyArray<import('./capture.js').CapturedCall>;
+
+    if (fc.source === 'http' && fc.endpoint && fc.token) {
+      const { HttpStorage } = await import('./storage-http.js');
+      const store = new HttpStorage({ endpoint: fc.endpoint, token: fc.token });
+      captures = await store.list({ limit: fc.limit ?? 50 });
+    } else {
+      // Node-only: dynamic import of FilesystemStorage
+      const { FilesystemStorage } = await import('./storage-fs.js');
+      const store = new FilesystemStorage({ dir: fc.source });
+      captures = await store.list({ limit: fc.limit ?? 50 });
+    }
+
+    const bridged = capturesToTraces(captures);
+    for (const t of bridged) {
+      const input = typeof t.input === 'string' ? t.input : JSON.stringify(t.input);
+      if (!testCases.some((tc) => tc.input === input)) {
+        testCases.push({ input, name: `capture:${t.id.slice(0, 8)}` });
+      }
+    }
+  }
+
   // 2. Run tests with concurrency control
   const totalSteps = testCases.length + (config.redteam ? 1 : 0);
   let completed = 0;

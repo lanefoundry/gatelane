@@ -82,6 +82,11 @@
       "import": "./dist/eval-runner.js",
       "source": "./src/eval-runner.ts"
     },
+    "./capture-bridge": {
+      "types": "./dist/capture-bridge.d.ts",
+      "import": "./dist/capture-bridge.js",
+      "source": "./src/capture-bridge.ts"
+    },
     "./node": {
       "types": "./dist/node.d.ts",
       "import": "./dist/node.js",

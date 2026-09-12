@@ -35,6 +35,12 @@ export interface EvalConfig {
     tag: string;
     limit?: number;
   };
+  from_captures?: {
+    source: string;
+    endpoint?: string;
+    token?: string;
+    limit?: number;
+  };
 }
 
 export interface EvalTestCase {
@@ -171,6 +177,19 @@ export function parseEvalConfig(raw: unknown): EvalConfig {
       tag: ft['tag'] as string,
       ...(typeof ft['dir'] === 'string' ? { dir: ft['dir'] } : {}),
       ...(typeof ft['limit'] === 'number' ? { limit: ft['limit'] } : {}),
+    };
+  }
+
+  if (obj['from_captures'] && typeof obj['from_captures'] === 'object') {
+    const fc = obj['from_captures'] as Record<string, unknown>;
+    if (typeof fc['source'] !== 'string') {
+      throw new Error('from_captures.source is required (filesystem path or "http")');
+    }
+    config.from_captures = {
+      source: fc['source'] as string,
+      ...(typeof fc['endpoint'] === 'string' ? { endpoint: fc['endpoint'] } : {}),
+      ...(typeof fc['token'] === 'string' ? { token: fc['token'] } : {}),
+      ...(typeof fc['limit'] === 'number' ? { limit: fc['limit'] } : {}),
     };
   }
 
