@@ -78,6 +78,9 @@ importers:
       '@gatelane/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@lanefoundry/source-prod-slice':
+        specifier: workspace:*
+        version: link:../../packages/source-prod-slice
       hono:
         specifier: ^4.5.0
         version: 4.13.5

@@ -87,6 +87,64 @@ export type CanaryResult = {
   advanced: boolean;
 };
 
+/** Traffic routing adapter — called on state transitions that affect routing. */
+export interface CanaryRouter {
+  setTrafficSplit(candidateRef: string, percentage: number): Promise<void>;
+  rollback(candidateRef: string): Promise<void>;
+}
+
+/** No-op router for tests and local dev. */
+export class NoOpRouter implements CanaryRouter {
+  readonly calls: Array<{ method: string; args: unknown[] }> = [];
+  async setTrafficSplit(candidateRef: string, percentage: number): Promise<void> {
+    this.calls.push({ method: 'setTrafficSplit', args: [candidateRef, percentage] });
+  }
+  async rollback(candidateRef: string): Promise<void> {
+    this.calls.push({ method: 'rollback', args: [candidateRef] });
+  }
+}
+
+/** Webhook-based router — POSTs state changes to a configurable URL. */
+export class WebhookRouter implements CanaryRouter {
+  constructor(private readonly webhookUrl: string, private readonly secret?: string) {}
+
+  async setTrafficSplit(candidateRef: string, percentage: number): Promise<void> {
+    await this.post({ action: 'setTrafficSplit', candidateRef, percentage });
+  }
+
+  async rollback(candidateRef: string): Promise<void> {
+    await this.post({ action: 'rollback', candidateRef });
+  }
+
+  private async post(payload: Record<string, unknown>): Promise<void> {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (this.secret) headers['X-Gatelane-Secret'] = this.secret;
+    const res = await fetch(this.webhookUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      console.warn(`[gatelane] webhook ${this.webhookUrl} returned ${res.status}`);
+    }
+  }
+}
+
+/** Active canary router (singleton). */
+let activeRouter: CanaryRouter = new NoOpRouter();
+
+/** Replace the active router. Returns previous for test restoration. */
+export function setCanaryRouter(router: CanaryRouter): CanaryRouter {
+  const prev = activeRouter;
+  activeRouter = router;
+  return prev;
+}
+
+/** Get the active router. */
+export function getCanaryRouter(): CanaryRouter {
+  return activeRouter;
+}
+
 /** D1 storage interface for canary persistence. */
 export interface CanaryStorage {
   /** Create a new canary record. */
@@ -197,6 +255,7 @@ export async function startCanary(args: StartCanaryArgs): Promise<CanaryResult> 
   };
 
   await activeCanaryStorage.create(record);
+  await activeRouter.setTrafficSplit(candidateRef, initialTrafficPercent);
 
   // Advance to observing state
   return advanceCanary(record.id);
@@ -234,6 +293,7 @@ export async function recordObservation(
     record.state = 'rolled_back';
     record.completedAt = new Date().toISOString();
     record.error = `Auto-rollback triggered: ${metric} delta ${delta.toFixed(2)} <= -${record.autoRollbackRule.metric_drop}`;
+    await activeRouter.rollback(record.candidateRef);
     await activeCanaryStorage.update(record);
     return { record, advanced: true };
   }
@@ -279,6 +339,7 @@ export async function advanceCanary(canaryId: string): Promise<CanaryResult> {
       record.state = 'promoted';
       record.trafficPercent = 100;
       record.completedAt = now.toISOString();
+      await activeRouter.setTrafficSplit(record.candidateRef, 100);
       break;
     }
     case 'promoted':
@@ -308,6 +369,7 @@ export async function rollbackCanary(canaryId: string, reason: string): Promise<
   record.error = `Manual rollback: ${reason}`;
   record.trafficPercent = 0;
 
+  await activeRouter.rollback(record.candidateRef);
   await activeCanaryStorage.update(record);
   return { record, advanced: true };
 }

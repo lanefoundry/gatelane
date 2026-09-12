@@ -12,6 +12,7 @@
   "dependencies": {
     "@gatelane/shared": "workspace:*",
     "@gatelane/engine": "workspace:*",
+    "@lanefoundry/source-prod-slice": "workspace:*",
     "hono": "^4.5.0"
   }
 }

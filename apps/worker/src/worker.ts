@@ -4,6 +4,7 @@ import type { Env } from "@gatelane/shared";
 import { captureEndpoint } from "./capture-endpoint.js";
 import { replayApi } from "./replay-api.js";
 import { traceApi } from "./trace-api.js";
+import { canaryApi } from "./canary-api.js";
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -15,5 +16,6 @@ app.get("/health", (c) => c.json({ status: "ok" }));
 app.route("/v1", captureEndpoint);
 app.route("/v1", replayApi);
 app.route("/v1", traceApi);
+app.route("/v1", canaryApi);
 
 export default app;
