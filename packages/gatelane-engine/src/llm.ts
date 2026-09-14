@@ -238,7 +238,7 @@ export class OpenAIChatCaller implements LLMCaller {
     this.apiKey = opts.apiKey;
     this.baseURL = opts.baseURL ?? 'https://api.openai.com';
     this.defaultModel = opts.defaultModel ?? 'gpt-4o-mini';
-    this.timeout = opts.timeout ?? 60_000;
+    this.timeout = opts.timeout ?? 120_000;
     this.provider = opts.provider ?? 'openai';
     this.pricing = opts.pricing ?? OPENAI_PRICING;
   }
@@ -377,7 +377,7 @@ export class AnthropicCaller implements LLMCaller {
     this.apiKey = opts.apiKey;
     this.baseURL = opts.baseURL ?? 'https://api.anthropic.com';
     this.defaultModel = opts.defaultModel ?? 'claude-3-5-haiku';
-    this.timeout = opts.timeout ?? 60_000;
+    this.timeout = opts.timeout ?? 120_000;
   }
 
   async call(request: LLMRequest): Promise<LLMResponse> {
@@ -503,7 +503,7 @@ export class GoogleCaller implements LLMCaller {
   }) {
     this.apiKey = opts.apiKey;
     this.defaultModel = opts.defaultModel ?? 'gemini-2.5-flash';
-    this.timeout = opts.timeout ?? 60_000;
+    this.timeout = opts.timeout ?? 120_000;
   }
 
   async call(request: LLMRequest): Promise<LLMResponse> {

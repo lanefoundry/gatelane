@@ -5,7 +5,7 @@
  * @see docs/prd.md §5.2.1 — Red-team dataset
  * @see docs/roadmap.md Week 3-4 — Red-team dataset source
  */
-import type { LLMCaller } from './llm.js';
+import { parseProviderModel, type LLMCaller } from './llm.js';
 import type { ReplayResult, ReplayArgs } from './replay.js';
 import type { JudgeVerdict } from './judge.js';
 import { LLMJudge } from './judge.js';
@@ -259,7 +259,8 @@ export async function collectVerdicts(args: {
   for (const cand of candidates) {
     for (const judgeRef of judges) {
       const judgeCaller = judge_callers?.[judgeRef] ?? caller;
-      const judge = new LLMJudge({ name: judgeRef, caller: judgeCaller });
+      const { model: judgeModel } = parseProviderModel(judgeRef, 'mock');
+      const judge = new LLMJudge({ name: judgeRef, model: judgeModel, caller: judgeCaller });
       const candRows = replayResult.rows.filter((r) => r.candidate_ref === cand.ref);
       for (const row of candRows) {
         const itemId = row.item_id;

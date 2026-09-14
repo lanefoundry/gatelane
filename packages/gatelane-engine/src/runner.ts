@@ -103,6 +103,13 @@ export function createRunner(opts: RunnerOptions): GateRunner {
       return result;
     });
 
+    // Warn if most replay rows returned empty content
+    const totalRows = replayResult.rows.length;
+    const emptyRows = replayResult.rows.filter((r) => !r.response.content).length;
+    if (totalRows > 0 && emptyRows > totalRows / 2) {
+      process.stderr.write(`  ⚠ ${emptyRows}/${totalRows} replay rows returned empty content — check provider/model configuration\n`);
+    }
+
     // Audit: replay
     if (opts.audit_db) {
       await createAndAppendAuditEntry(runId, 'replay', {
@@ -123,7 +130,8 @@ export function createRunner(opts: RunnerOptions): GateRunner {
       for (const cand of candidates) {
         for (const judgeRef of args.judges) {
           const judgeCaller = opts.judge_callers?.[judgeRef] ?? opts.caller;
-          const judge = new LLMJudge({ name: judgeRef, caller: judgeCaller });
+          const { model: judgeModel } = parseProviderModel(judgeRef, 'mock');
+          const judge = new LLMJudge({ name: judgeRef, model: judgeModel, caller: judgeCaller });
           const candRows = replayResult.rows.filter((r) => r.candidate_ref === cand.ref);
           for (const row of candRows) {
             const itemId = row.item_id;
