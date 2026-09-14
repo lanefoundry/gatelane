@@ -143,7 +143,7 @@ const res = await fetch("http://localhost:8787/v1/capture", {
 Or programmatically via the engine package (for in-process use):
 
 ```typescript
-import { capture } from "@gatelane/engine";
+import { capture } from "@lanefoundry/gatelane-sdk";
 
 const { response, record } = await capture(env, {
   prompt: [{ role: "user", content: userInput }],

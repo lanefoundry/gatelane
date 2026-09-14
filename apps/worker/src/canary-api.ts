@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import type { Env } from "@gatelane/shared";
+import type { Env } from "./types.js";
 
 export const canaryApi = new Hono<{ Bindings: Env }>();
 

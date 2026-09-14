@@ -4,7 +4,7 @@
  * 2. Auto-observe: collect metrics from recent captures and feed them into active canaries.
  * 3. Audit: log every state transition and auto-rollback.
  */
-import type { Env } from "@gatelane/shared";
+import type { Env } from "./types.js";
 
 interface CanaryRow {
   id: string;

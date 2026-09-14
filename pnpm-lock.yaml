@@ -72,12 +72,6 @@ importers:
 
   apps/worker:
     dependencies:
-      '@gatelane/engine':
-        specifier: workspace:*
-        version: link:../../packages/engine
-      '@gatelane/shared':
-        specifier: workspace:*
-        version: link:../../packages/shared
       hono:
         specifier: ^4.5.0
         version: 4.13.5
@@ -122,16 +116,6 @@ importers:
       typescript:
         specifier: ^5.5.4
         version: 5.9.3
-
-  packages/engine:
-    dependencies:
-      '@gatelane/shared':
-        specifier: workspace:*
-        version: link:../shared
-    devDependencies:
-      '@cloudflare/workers-types':
-        specifier: ^4.20250408.0
-        version: 4.20260702.1
 
   packages/gatelane-engine:
     dependencies:
@@ -184,38 +168,6 @@ importers:
       vitest:
         specifier: ^2.0.5
         version: 2.1.9(@types/node@22.20.1)
-
-  packages/mode-backtest:
-    dependencies:
-      '@gatelane/engine':
-        specifier: workspace:*
-        version: link:../engine
-      '@gatelane/shared':
-        specifier: workspace:*
-        version: link:../shared
-    devDependencies:
-      '@cloudflare/workers-types':
-        specifier: ^4.20250408.0
-        version: 4.20260702.1
-
-  packages/mode-red-team:
-    dependencies:
-      '@gatelane/engine':
-        specifier: workspace:*
-        version: link:../engine
-      '@gatelane/shared':
-        specifier: workspace:*
-        version: link:../shared
-    devDependencies:
-      '@cloudflare/workers-types':
-        specifier: ^4.20250408.0
-        version: 4.20260702.1
-
-  packages/shared:
-    devDependencies:
-      '@cloudflare/workers-types':
-        specifier: ^4.20250408.0
-        version: 4.20260702.1
 
   packages/source-prod-slice:
     dependencies:

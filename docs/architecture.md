@@ -86,7 +86,7 @@ apps/worker                     (depends on gatelane-sdk + gatelane-engine + hon
 | `packages/source-prod-slice` | `@lanefoundry/source-prod-slice`  | Production slice: freeze-slice, replay-batch, canary, signed report, audit export |
 | `packages/cli`               | `@lanefoundry/gatelane-cli`       | CLI interface (`gatelane scan`, `eval`, `run`, `snapshot`, `canary`) |
 | `packages/ci-adapter`        | `@lanefoundry/ci-adapter`         | CI/CD integration (GitHub Actions)                             |
-| `apps/worker`                | `@gatelane/worker`                | Cloudflare Worker; Hono HTTP server                            |
+| `apps/worker`                | `@lanefoundry/gatelane-worker`    | Cloudflare Worker; Hono HTTP server                            |
 
 ### Engine exports
 

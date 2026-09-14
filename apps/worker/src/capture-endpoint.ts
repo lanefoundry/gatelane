@@ -1,7 +1,6 @@
 import { Hono } from "hono";
-import type { Env } from "@gatelane/shared";
-import { capture, type CaptureInput } from "@gatelane/engine";
-import { writeAuditLog } from "@gatelane/engine";
+import type { Env, CaptureInput } from "./types.js";
+import { capture, writeAuditLog } from "./db.js";
 
 export const captureEndpoint = new Hono<{ Bindings: Env }>();
 

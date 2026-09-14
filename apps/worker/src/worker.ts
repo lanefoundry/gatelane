@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import type { Env } from "@gatelane/shared";
+import type { Env } from "./types.js";
 import { captureEndpoint } from "./capture-endpoint.js";
 import { replayApi } from "./replay-api.js";
 import { canaryApi } from "./canary-api.js";

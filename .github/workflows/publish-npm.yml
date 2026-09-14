@@ -34,7 +34,6 @@ jobs:
           registry-url: https://registry.npmjs.org/
 
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @gatelane/shared build
       - run: pnpm --filter @lanefoundry/gatelane-sdk build
       - run: pnpm --filter @lanefoundry/gatelane-engine build
       - run: pnpm --filter @lanefoundry/gatelane-cli build

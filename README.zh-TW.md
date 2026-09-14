@@ -143,7 +143,7 @@ const res = await fetch("http://localhost:8787/v1/capture", {
 或透過 engine 套件以程式方式使用（用於同進程整合）：
 
 ```typescript
-import { capture } from "@gatelane/engine";
+import { capture } from "@lanefoundry/gatelane-sdk";
 
 const { response, record } = await capture(env, {
   prompt: [{ role: "user", content: userInput }],

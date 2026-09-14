@@ -7,8 +7,5 @@
     "types": ["@cloudflare/workers-types"]
   },
   "include": ["src"],
-  "references": [
-    { "path": "../../packages/shared" },
-    { "path": "../../packages/engine" }
-  ]
+  "references": []
 }

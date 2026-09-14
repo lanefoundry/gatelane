@@ -7,19 +7,18 @@ PackageName: Gatelane
 License: Apache-2.0
 ShortDescription: Pre-production safety + eval gate for AI agents. Captures live LLM traffic, freezes it into reproducible datasets, replays against candidate models, and auto-promotes or rolls back based on configurable quality threshold.
 Description: |
-  gatelane is the pre-production safety + eval gate for AI agents. It runs two modes on a shared engine:
+  gatelane is the pre-production safety + eval gate for AI agents. One CLI, two commands:
 
-    Mode A (Backtest): take a frozen slice of production traffic, replay it against a candidate
-    model, score the responses with an LLM judge, and emit a signed promotion report. If the
-    candidate meets the threshold, route to canary; else auto-rollback.
+    gatelane scan — run security attack probes against a deployed agent and emit a vulnerability
+    report with payload, evidence, and patch recommendations.
 
-    Mode B (Red Team): run attack probes (garak / PyRIT / Promptfoo catalogues) against a
-    deployed agent and emit a vulnerability list with payload, evidence, and patch
-    recommendations.
+    gatelane eval — replay a frozen slice of production traffic against candidate models, score
+    with an LLM judge, and emit a signed promotion report. If the candidate meets the threshold,
+    route to canary; else auto-block.
 
-  Modes A and B share the same capture pipeline and the same promotion primitive. No other
-  product ships `if new-model beats baseline on frozen production slice by Δ ≥ X, route 100%
-  of traffic; else auto-rollback`.
+  Both commands share the same capture pipeline and promotion primitive. No other product ships
+  a CI/CD-native gate that answers: "Is this new model/prompt/tool safe AND good enough to
+  deploy?"
 
   Distribution: gatelane ships as a single binary via `winget install lanefoundry.gatelane`,
   as a Docker image via `docker run ghcr.io/lanefoundry/gatelane`, as npm packages

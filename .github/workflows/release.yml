@@ -55,13 +55,12 @@ jobs:
 
       - name: Build SDK + engine + CLI
         run: |
-          pnpm --filter @gatelane/shared build
           pnpm --filter @lanefoundry/gatelane-sdk build
           pnpm --filter @lanefoundry/gatelane-engine build
           pnpm --filter @lanefoundry/gatelane-cli build
 
       - name: Build dashboard (static assets)
-        run: pnpm --filter @gatelane/dashboard build
+        run: pnpm --filter @lanefoundry/gatelane-dashboard build
 
       - name: Resolve tag
         id: tag
@@ -296,7 +295,6 @@ jobs:
       - name: Install + build
         run: |
           pnpm install --frozen-lockfile
-          pnpm --filter @gatelane/shared build
           pnpm --filter @lanefoundry/gatelane-sdk build
           pnpm --filter @lanefoundry/gatelane-engine build
           pnpm --filter @lanefoundry/gatelane-cli build
@@ -348,7 +346,6 @@ jobs:
       - name: Install JS deps + build SDK so Python can grab types
         run: |
           pnpm install --frozen-lockfile
-          pnpm --filter @gatelane/shared build
           pnpm --filter @lanefoundry/gatelane-sdk build
 
       - name: Build Python wheel + sdist

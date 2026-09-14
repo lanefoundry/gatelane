@@ -15,10 +15,10 @@
   },
   "files": [],
   "references": [
-    { "path": "packages/shared" },
-    { "path": "packages/engine" },
-    { "path": "packages/mode-red-team" },
-    { "path": "packages/mode-backtest" },
+    { "path": "packages/gatelane-sdk" },
+    { "path": "packages/gatelane-engine" },
+    { "path": "packages/source-prod-slice" },
+    { "path": "packages/cli" },
     { "path": "apps/worker" }
   ]
 }
