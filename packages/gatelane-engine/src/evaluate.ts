@@ -1,6 +1,6 @@
 /**
- * PromotionPolicy evaluator — apply policy rules to compare() output and
- * return a PromotionDecision.
+ * GatePolicy evaluator — apply policy rules to compare() output and
+ * return a GateDecision.
  *
  * Rules (per PRD §5.1):
  *   - min_delta: candidate.aggregate_delta must be ≥ min_delta to pass.
@@ -12,7 +12,7 @@
  * @see docs/prd.md §5.1 — The gate
  */
 
-import type { PromotionDecision, PromotionPolicy } from '@lanefoundry/gatelane-sdk/promotion';
+import type { GateDecision, GatePolicy } from '@lanefoundry/gatelane-sdk/promotion';
 
 import type { CandidateMetric } from './compare.js';
 import type { JudgeStabilityMatrix } from '@lanefoundry/gatelane-sdk/promotion';
@@ -21,14 +21,12 @@ export type EvaluateArgs = {
   candidates: ReadonlyArray<string>;
   perCandidate: Record<string, CandidateMetric>;
   judgeMatrix: JudgeStabilityMatrix;
-  policy: PromotionPolicy;
-  /** Optional approver (when policy.approval_required). */
+  policy: GatePolicy;
   approver?: string;
 };
 
 export type EvaluateResult = {
-  decision: PromotionDecision;
-  /** Per-rule pass/fail detail. */
+  decision: GateDecision;
   rule_results: {
     min_delta: Record<string, boolean>;
     judge_stability: Record<string, boolean>;
@@ -40,7 +38,7 @@ export type EvaluateResult = {
 /**
  * Evaluate all candidates against policy. The decision applies to the best
  * candidate that passes all rules; if multiple pass, the one with the highest
- * aggregate_delta wins. If none pass, the action is `rollback`. If
+ * aggregate_delta wins. If none pass, the action is `block`. If
  * approval_required, every pass becomes `hold_for_review`.
  */
 export function evaluate(args: EvaluateArgs): EvaluateResult {
@@ -85,7 +83,7 @@ export function evaluate(args: EvaluateArgs): EvaluateResult {
       if (!r.latency_ceiling[cand]) reasons.push(`${cand}: latency_delta > ${policy.latency_ceiling}`);
     }
     return {
-      decision: { action: 'rollback', reason: reasons.join('; ') },
+      decision: { action: 'block', reason: reasons.join('; ') },
       rule_results,
     };
   }
@@ -93,7 +91,7 @@ export function evaluate(args: EvaluateArgs): EvaluateResult {
   passing.sort((a, b) => b.metric.aggregate_delta - a.metric.aggregate_delta);
   const winner = passing[0];
   if (winner === undefined) {
-    return { decision: { action: 'rollback', reason: 'internal: no winner' }, rule_results };
+    return { decision: { action: 'block', reason: 'internal: no winner' }, rule_results };
   }
 
   if (policy.approval_required === true) {
@@ -108,7 +106,7 @@ export function evaluate(args: EvaluateArgs): EvaluateResult {
 
   return {
     decision: {
-      action: 'promote',
+      action: 'pass',
       winner: winner.ref,
       reason: `winner=${winner.ref} passed all rules (Δ=${winner.metric.aggregate_delta.toFixed(4)})`,
     },

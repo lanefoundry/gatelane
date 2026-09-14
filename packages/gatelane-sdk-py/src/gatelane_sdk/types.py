@@ -26,6 +26,57 @@ are dropped at the boundary; the SDK treats content as opaque text."""
 
 
 @dataclass(frozen=True, slots=True)
+class ToolCall:
+    """A tool/function call made by the assistant."""
+
+    id: str
+    name: str
+    arguments: str  # JSON string
+
+
+@dataclass(frozen=True, slots=True)
+class TurnError:
+    """Error info attached to a failed turn."""
+
+    type: str
+    message: str
+    stack: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class Turn:
+    """A single step in a multi-turn agent trace.
+
+    Flat turns array is the primary representation for eval/replay.
+    span_id + parent_span_id overlay a nested tree for OTel/APM export.
+
+    Mirrors `Turn` in `packages/gatelane-sdk/src/capture.ts`.
+    """
+
+    role: ChatRole
+    content: str | None = None
+    tool_calls: Sequence[ToolCall] = field(default_factory=tuple)
+    tool_call_id: str | None = None
+    name: str | None = None
+
+    # Error tracking
+    status: Literal["ok", "error", "timeout"] | None = None
+    error: TurnError | None = None
+
+    # Nested span overlay (OTel-compatible)
+    span_id: str | None = None
+    parent_span_id: str | None = None
+    span_kind: Literal["llm", "tool", "agent", "retriever", "guardrail"] | None = None
+    started_at: str | None = None
+    completed_at: str | None = None
+    cost_usd: float | None = None
+    latency_ms: float | None = None
+    tokens_in: int | None = None
+    tokens_out: int | None = None
+    model: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class CaptureMetadata:
     """Free-form metadata attached to every capture record.
 
@@ -33,7 +84,7 @@ class CaptureMetadata:
     - traceId:      canonical trace id (string)
     - agentVersion: agent git SHA / version
     - dataset:      dataset slug if this call is a replay source
-    - source_kind:  one of "gate.replay", "gate.compare", "gate.promote",
+    - source_kind:  one of "gate.replay", "gate.compare", "gate.pass",
                     "redteam.attack", "redteam.judge"
     """
 
@@ -58,6 +109,9 @@ class CapturedCall:
     span_kind: str | None = None
     model: str | None = None
     metadata: CaptureMetadata = field(default_factory=CaptureMetadata)
+    turns: Sequence[Turn] = field(default_factory=tuple)
+    outcome: Literal["success", "partial_failure", "failure"] | None = None
+    errors: Sequence[Mapping[str, Any]] = field(default_factory=tuple)
 
 
 @dataclass(frozen=True, slots=True)

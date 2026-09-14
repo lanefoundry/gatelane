@@ -10,7 +10,7 @@ import type { JudgeStabilityMatrix } from '@lanefoundry/gatelane-sdk/promotion';
 import type { ReplayResult } from './replay.js';
 import type { JudgeVerdict } from './judge.js';
 
-/** Per-candidate summary consumed by PromotionReport. */
+/** Per-candidate summary consumed by GateReport. */
 export type CandidateMetric = {
   /** Mean of judge scores, 0.0–1.0. */
   mean_score: number;

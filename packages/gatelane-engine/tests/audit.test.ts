@@ -177,7 +177,7 @@ describe('audit', () => {
 
     it('uses correct event types', async () => {
       const eventTypes: AuditLogEntry['event_type'][] = [
-        'capture', 'replay', 'judge', 'compare', 'promote', 'sign'
+        'capture', 'replay', 'judge', 'compare', 'gate_decision', 'sign'
       ];
 
       for (const eventType of eventTypes) {

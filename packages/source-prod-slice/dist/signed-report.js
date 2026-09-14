@@ -15,7 +15,7 @@ import { shaOfCandidateRef } from '@lanefoundry/gatelane-sdk';
  * computes the signature, and returns the complete signed report.
  */
 export async function buildSignedReport(args) {
-    const { gateRunId, dataset, candidateShas, judgeShas, scorerCodeSha, baselineMetrics, candidateMetrics, judgeMatrix, policy, decision, approver, traceIds = [], signingKey, } = args;
+    const { gateRunId, dataset, candidateShas, judgeShas, scorerCodeSha, baselineMetrics, candidateMetrics, judgeMatrix, policy, approver, signingKey, } = args;
     // Validate required fields
     if (!signingKey || signingKey.length < 16) {
         throw new Error('signingKey must be >= 16 characters');

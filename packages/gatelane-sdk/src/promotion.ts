@@ -1,28 +1,31 @@
 /**
- * Promotion policy, report, and decision — the signed artifacts produced by a gate run.
+ * Gate policy, report, and decision — the signed artifacts produced by a gate run.
  *
  * @see docs/prd.md §5.1 — The gate
  */
 
-export type PromotionPolicy = {
-  /** Minimum aggregate delta over baseline required to promote. */
+export type GatePolicy = {
+  /** Minimum aggregate delta over baseline required to pass. */
   readonly min_delta: number;
   /** Minimum fraction of judges that must agree on the winning candidate (e.g., 0.67 = 2 of 3). */
   readonly judge_stability_threshold: number;
-  /** Maximum cost increase over baseline permitted for a promote decision. */
+  /** Maximum cost increase over baseline permitted for a pass decision. */
   readonly cost_ceiling: number;
-  /** Maximum latency increase over baseline permitted for a promote decision. */
+  /** Maximum latency increase over baseline permitted for a pass decision. */
   readonly latency_ceiling: number;
   /** Whether human approval is required before the gate decision is executed. */
   readonly approval_required: boolean;
-  /** Trigger condition under which a deployed canary is automatically rolled back. */
-  readonly auto_rollback_rule?: {
+  /** Trigger condition under which a deployed canary is automatically blocked. */
+  readonly auto_block_rule?: {
     /** Metric drop threshold (e.g., 0.05 = 5% drop). */
     readonly metric_drop: number;
-    /** Window to observe canary before promoting to 100% (e.g., "24h"). */
+    /** Window to observe canary before passing to 100% (e.g., "24h"). */
     readonly window: string;
   };
 };
+
+/** @deprecated Use GatePolicy instead. */
+export type PromotionPolicy = GatePolicy;
 
 export type JudgeStabilityMatrix = {
   readonly candidates: ReadonlyArray<string>;
@@ -33,7 +36,7 @@ export type JudgeStabilityMatrix = {
   readonly consensus_winners: ReadonlyArray<string>;
 };
 
-export type PromotionReport = {
+export type GateReport = {
   readonly id: string;
   readonly gate_run_id: string;
   readonly dataset_content_hash: string;
@@ -55,7 +58,7 @@ export type PromotionReport = {
   /** Which judge picked which candidate as winner. */
   readonly judge_matrix: JudgeStabilityMatrix;
   /** Policy that was applied to this gate run. */
-  readonly policy: PromotionPolicy;
+  readonly policy: GatePolicy;
   /** Who approved the decision (when approval_required = true). */
   readonly approver?: string;
   /** ISO 8601 timestamp of report signing. */
@@ -64,14 +67,17 @@ export type PromotionReport = {
   readonly signature: string;
 };
 
-export type PromotionDecision =
+/** @deprecated Use GateReport instead. */
+export type PromotionReport = GateReport;
+
+export type GateDecision =
   | {
-      readonly action: 'promote';
+      readonly action: 'pass';
       readonly winner: string;
       readonly reason: string;
     }
   | {
-      readonly action: 'rollback';
+      readonly action: 'block';
       readonly reason: string;
     }
   | {
@@ -79,8 +85,11 @@ export type PromotionDecision =
       readonly reason: string;
     };
 
-/** Default promotion policy. */
-export const DEFAULT_POLICY: PromotionPolicy = {
+/** @deprecated Use GateDecision instead. */
+export type PromotionDecision = GateDecision;
+
+/** Default gate policy. */
+export const DEFAULT_POLICY: GatePolicy = {
   min_delta: 0.02,
   judge_stability_threshold: 0.67,
   cost_ceiling: 0.1,

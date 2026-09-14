@@ -39,6 +39,9 @@ from .types import (
     ChatMessage,
     StorageAdapter,
     StorageAdapterError,
+    ToolCall,
+    Turn,
+    TurnError,
     WriteResult,
 )
 
@@ -71,5 +74,8 @@ __all__ = [
     "CapturedCall",
     "CaptureMetadata",
     "ChatMessage",
+    "ToolCall",
+    "Turn",
+    "TurnError",
     "WriteResult",
 ]

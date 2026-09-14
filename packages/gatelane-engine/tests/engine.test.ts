@@ -5,7 +5,7 @@ import {
   setGateRunner,
   runGate,
   resetGateRunner,
-  type PromotionReport,
+  type GateReport,
 } from '@lanefoundry/gatelane-sdk';
 
 import {
@@ -223,7 +223,7 @@ describe('signReport / verifyReport', () => {
   });
 
   it('throws when signing key is too short', async () => {
-    const empty: PromotionReport = {
+    const empty: GateReport = {
       id: 'x', gate_run_id: 'y', dataset_content_hash: 'z', dataset_version: 'v1',
       candidate_shas: {}, judge_shas: {}, scorer_code_sha: 's',
       baseline_metrics: {}, candidate_metrics: {},
@@ -236,7 +236,7 @@ describe('signReport / verifyReport', () => {
 });
 
 describe('evaluate', () => {
-  it('returns rollback when no candidate passes', () => {
+  it('returns block when no candidate passes', () => {
     const result = evaluate({
       candidates: ['a'],
       perCandidate: {
@@ -245,10 +245,10 @@ describe('evaluate', () => {
       judgeMatrix: { candidates: ['a'], judges: ['g1'], winners_by_judge: {}, consensus_winners: [] },
       policy: { min_delta: 0.02, judge_stability_threshold: 0.5, cost_ceiling: 0.1, latency_ceiling: 0.2, approval_required: false },
     });
-    expect(result.decision.action).toBe('rollback');
+    expect(result.decision.action).toBe('block');
   });
 
-  it('returns promote when best candidate passes all rules', () => {
+  it('returns pass when best candidate passes all rules', () => {
     const result = evaluate({
       candidates: ['a', 'b'],
       perCandidate: {
@@ -258,8 +258,8 @@ describe('evaluate', () => {
       judgeMatrix: { candidates: ['a', 'b'], judges: ['g1'], winners_by_judge: { a: 1 }, consensus_winners: ['a'] },
       policy: { min_delta: 0.02, judge_stability_threshold: 0.5, cost_ceiling: 0.1, latency_ceiling: 0.2, approval_required: false },
     });
-    expect(result.decision.action).toBe('promote');
-    if (result.decision.action === 'promote') expect(result.decision.winner).toBe('a');
+    expect(result.decision.action).toBe('pass');
+    if (result.decision.action === 'pass') expect(result.decision.winner).toBe('a');
   });
 
   it('returns hold_for_review when approval_required', () => {

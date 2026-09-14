@@ -2,7 +2,7 @@
  * Judge — scores a (candidate, item) replay output.
  *
  * Used by the gate to compute per-candidate metrics that feed the
- * PromotionReport. Judges are themselves LLM-backed (or mock).
+ * GateReport. Judges are themselves LLM-backed (or mock).
  *
  * @see docs/prd.md §5.1 — The gate
  */

@@ -63,7 +63,7 @@ export interface PromotionReport {
   replayRunId: string;
   delta: number;
   threshold: number;
-  decision: "promote" | "rollback";
+  decision: "pass" | "block";
   candidateModel: string;
   baselineModel: string;
   summary: PromotionSummary;
@@ -84,7 +84,7 @@ export interface PromotionSummary {
 
 export interface AuditLogEntry {
   id: string;
-  action: "capture" | "freeze" | "replay" | "promote" | "rollback";
+  action: "capture" | "freeze" | "replay" | "pass" | "block";
   resourceType: string;
   resourceId: string;
   actor: string;

@@ -3,7 +3,7 @@
  * gatelane CLI — promotion gate for AI agents.
  *
  * Config-first: put a gatelane.config.yaml in your project root,
- * then just `npx gatelane gate`. CLI flags override config values.
+ * then just `npx gatelane eval`. CLI flags override config values.
  *
  * @see docs/distribution.md
  */
@@ -30,7 +30,12 @@ import {
   parseProviderModel,
   PROVIDER_REGISTRY,
   PROVIDER_PRICING,
+  runRedTeamGate,
+  verifyPatchHolds,
   type LLMCaller,
+  type AttackReport,
+  type CandidateAttackSummary,
+  type ScanReplayRow,
 } from '@lanefoundry/gatelane-engine';
 
 const SUPPORTED_PROVIDERS = ['mock', ...Object.keys(PROVIDER_REGISTRY)].join('|');
@@ -38,8 +43,10 @@ const SUPPORTED_PROVIDERS = ['mock', ...Object.keys(PROVIDER_REGISTRY)].join('|'
 const HELP = `gatelane — promotion gate for AI agents
 
 Usage:
-  gatelane gate [options]             Run gate (reads gatelane.config.yaml by default)
-  gatelane freeze-slice [options]     Freeze a production traffic slice
+  gatelane scan [options]             Security scan (attack probes)
+  gatelane eval [options]             Quality evaluation (backtest promotion gate)
+  gatelane run [options]              Full pipeline (scan + eval)
+  gatelane snapshot [options]         Snapshot production traffic into a dataset
   gatelane init                       Create a starter gatelane.config.yaml
   gatelane --help
 
@@ -55,7 +62,18 @@ Config file (gatelane.config.yaml):
 
   Put API keys in .env (auto-loaded). CLI flags override config values.
 
-Gate options:
+Scan options:
+  --candidate <ref>       Candidate to scan (provider:model format)
+  --judges <list>         Comma-separated judge models
+  --baseline <ref>        Compare patched vs baseline (patch verification)
+  --provider <name>       Default provider for candidates without prefix
+  --judge-provider <name> Default provider for judges
+  --report <path>         Write report JSON to file
+  --format <fmt>          Output format: table (default) | json
+  --config <path>         Config file path (default: gatelane.config.yaml)
+  --env-file <path>       Env file path (default: .env)
+
+Eval options:
   --candidate <ref>       Add candidate (provider:model format)
   --judges <list>         Comma-separated judge models
   --dataset <path>        Frozen dataset JSON file
@@ -70,7 +88,7 @@ Gate options:
   --config <path>         Config file path (default: gatelane.config.yaml)
   --env-file <path>       Env file path (default: .env)
 
-Freeze-slice options:
+Snapshot options:
   --window <7d|24h|30d>   Time window (default: 7d)
   --output <path>         Output dataset file (required)
   --endpoint <url>        Worker endpoint URL
@@ -78,7 +96,7 @@ Freeze-slice options:
 
 Providers: ${SUPPORTED_PROVIDERS}
 
-v0.3.0 — config-first multi-provider.
+v0.4.0 — scan + eval + run.
 `;
 
 // ── Config schema (zod) ──────────────────────────────────────────────
@@ -155,7 +173,6 @@ async function loadConfig(explicitPath?: string): Promise<GatelaneConfig> {
     process.exit(2);
   }
 
-  // Validate provider names in candidates/judges
   for (const ref of result.data.candidates ?? []) {
     const { provider } = parseProviderModel(ref, 'mock');
     if (!VALID_PROVIDERS.has(provider)) {
@@ -262,12 +279,13 @@ function makeCaller(provider: string, defaultModel: string): LLMCaller {
   });
 }
 
-// ── Table formatter ──────────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────────────
 
-function printTable(
-  headers: string[],
-  rows: string[][],
-): void {
+function truncate(s: string, max: number): string {
+  return s.length > max ? s.slice(0, max) + '…' : s;
+}
+
+function printTable(headers: string[], rows: string[][]): void {
   const widths = headers.map((h, i) =>
     Math.max(h.length, ...rows.map((r) => (r[i] ?? '').length)),
   );
@@ -281,8 +299,6 @@ function printTable(
   }
 }
 
-// ── Commands ─────────────────────────────────────────────────────────
-
 function sinceFromWindow(window: string): string {
   const m = /^(\d+)([dh])$/.exec(window);
   if (!m) throw new Error(`invalid --window: ${window} (expected e.g. 7d, 24h, 30d)`);
@@ -291,54 +307,258 @@ function sinceFromWindow(window: string): string {
   return new Date(Date.now() - ms).toISOString();
 }
 
-const CONCURRENCY_LIMIT = 5;
-
-async function runParallel<T>(
-  tasks: Array<() => Promise<T>>,
-  concurrency: number,
-): Promise<T[]> {
-  const results: T[] = [];
-  const executing = new Set<Promise<void>>();
-  for (const task of tasks) {
-    const p = task().then((result) => { results.push(result); });
-    executing.add(p);
-    p.finally(() => executing.delete(p));
-    if (executing.size >= concurrency) {
-      await Promise.race(executing);
-    }
-  }
-  await Promise.all(executing);
-  return results;
+async function saveTrace(name: string, json: string): Promise<string> {
+  const today = new Date().toISOString().slice(0, 10);
+  const traceDir = resolve('.gatelane', 'traces', today);
+  await mkdir(traceDir, { recursive: true });
+  const tracePath = join(traceDir, `${name}-${crypto.randomUUID().slice(0, 8)}.json`);
+  await writeFile(tracePath, json, 'utf-8');
+  return tracePath;
 }
 
-async function cmdGate(argv: ReadonlyArray<string>): Promise<number> {
+function resolveCommonArgs(argv: ReadonlyArray<string>, config: GatelaneConfig) {
   const { multi, single } = parseArgs(argv);
-  const config = await loadConfig(multi['config']?.[0]);
-
-  const dryRun = single['dry-run'] === true;
-  const format = (multi['format']?.[0] ?? config.format ?? 'json') as 'json' | 'table';
-
-  const candidates = multi['candidate']?.length
-    ? multi['candidate']
-    : config.candidates ?? [];
-
+  const candidates = multi['candidate']?.length ? multi['candidate'] : config.candidates ?? [];
   const judgesRaw = multi['judges']?.[0];
-  const judges = judgesRaw
-    ? judgesRaw.split(',').map((s) => s.trim()).filter(Boolean)
-    : config.judges ?? [];
+  const judges = judgesRaw ? judgesRaw.split(',').map((s) => s.trim()).filter(Boolean) : config.judges ?? [];
+  const defaultProvider = resolveProvider(multi['provider']?.[0] ?? config.provider);
+  const judgeProvider = resolveProvider(multi['judge-provider']?.[0] ?? config.judge_provider ?? multi['provider']?.[0] ?? config.provider);
+  const signingKey = multi['signing-key']?.[0] ?? config.signing_key ?? process.env.GATELANE_SIGNING_KEY ?? 'dev-only-insecure-signing-key';
+  const reportPath = multi['report']?.[0] ?? config.report;
+  const baseline = multi['baseline']?.[0] ?? config.baseline;
+  const format = multi['format']?.[0] ?? config.format;
+  return { multi, single, candidates, judges, defaultProvider, judgeProvider, signingKey, reportPath, baseline, format };
+}
+
+function buildCallers(refs: string[], defaultProvider: string): Record<string, LLMCaller> {
+  const callers: Record<string, LLMCaller> = {};
+  for (const ref of refs) {
+    const { provider, model } = parseProviderModel(ref, defaultProvider);
+    callers[ref] = makeCaller(provider, model);
+  }
+  return callers;
+}
+
+const CONCURRENCY_LIMIT = 5;
+
+// ── scan ─────────────────────────────────────────────────────────────
+
+function printScanTable(
+  report: AttackReport,
+  replayRows: ScanReplayRow[],
+  dataset: FrozenDataset,
+): void {
+  // Red Team summary
+  process.stderr.write('\n  ── Red Team: 20 attacks launched ──\n');
+
+  for (const c of report.candidates) {
+    // Blue Team (candidate) summary
+    process.stderr.write(`\n  ── Blue Team: ${c.candidate_ref} ──\n\n`);
+    printTable(
+      ['Survived', 'Failed', 'Survival Rate'],
+      [[String(c.survived), String(c.failed), `${(c.survival_rate * 100).toFixed(0)}%`]],
+    );
+
+    // By category
+    process.stderr.write(`\n  ── ${c.candidate_ref} by category ──\n\n`);
+    printTable(
+      ['Category', 'Survived', 'Failed', 'Total'],
+      Object.entries(c.by_category).map(([cat, stats]) => [
+        cat, String(stats.survived), String(stats.failed), String(stats.total),
+      ]),
+    );
+
+    // Vulnerabilities with attack content + model response
+    if (c.vulnerabilities.length > 0) {
+      process.stderr.write(`\n  ── Vulnerabilities: ${c.candidate_ref} (${c.vulnerabilities.length}) ──\n\n`);
+
+      const vulnRows = c.vulnerabilities.map((v) => {
+        // Find the attack input from the dataset
+        const item = dataset.items?.find((it) => it.id === v.item_id);
+        const attackContent = item?.input
+          ? (typeof item.input === 'string' ? item.input : JSON.stringify(item.input))
+          : '-';
+        // Find the model response from replay rows
+        const row = replayRows.find((r) => r.item_id === v.item_id && r.candidate_ref === c.candidate_ref);
+        const responseContent = row?.content ?? '-';
+
+        return [
+          v.item_id,
+          v.category,
+          v.mapped_asi,
+          truncate(attackContent, 60),
+          truncate(responseContent, 60),
+        ];
+      });
+      printTable(['ID', 'Category', 'ASI', 'Attack', 'Response'], vulnRows);
+    } else {
+      process.stderr.write(`\n  ✓ No vulnerabilities found for ${c.candidate_ref}\n`);
+    }
+  }
+
+  // OWASP ASI gaps
+  if (report.by_asi.length > 0) {
+    process.stderr.write('\n  ── OWASP ASI Gaps ──\n\n');
+    printTable(
+      ['ASI', 'Failed', 'Total', 'Fail Rate'],
+      report.by_asi.map((a) => [a.asi, String(a.failed), String(a.total), `${(a.fail_rate * 100).toFixed(0)}%`]),
+    );
+  }
+}
+
+async function cmdScan(argv: ReadonlyArray<string>): Promise<number> {
+  const config = await loadConfig(parseArgs(argv).multi['config']?.[0]);
+  const args = resolveCommonArgs(argv, config);
+  const { candidates, judges, defaultProvider, judgeProvider, signingKey, reportPath, baseline } = args;
+  const format = (args.format ?? 'table') as 'json' | 'table';
+
+  if (candidates.length === 0 || judges.length === 0) {
+    process.stderr.write(
+      'error: candidates and judges are required.\n' +
+      '       Set them in gatelane.config.yaml or pass --candidate / --judges flags.\n',
+    );
+    return 2;
+  }
+
+  process.stderr.write('\n  mode:       scan (security probes)\n');
+  process.stderr.write(`  candidates: ${candidates.join(', ')}\n`);
+  process.stderr.write(`  judges:     ${judges.join(', ')}\n`);
+  process.stderr.write(`  vectors:    20 (4 categories)\n`);
+  if (baseline) process.stderr.write(`  baseline:   ${baseline} (patch verification)\n`);
+  process.stderr.write('\n');
+
+  const dataset = await freezeInjectionDataset();
+  const candidateCallers = buildCallers(candidates, defaultProvider);
+  const judgeCallers = buildCallers(judges, judgeProvider);
+
+  const result = await runRedTeamGate({
+    dataset, candidates, judges,
+    caller: candidateCallers[candidates[0]!]!,
+    judge_callers: judgeCallers,
+    signing_key: signingKey,
+  });
+
+  // Table output with attack content + model response
+  if (format === 'table') {
+    printScanTable(result.attackReport, result.replayRows, dataset);
+
+    if (result.gateResult) {
+      const d = result.gateResult.decision;
+      process.stderr.write(`\n  gate: ${d.action}`);
+      if ('winner' in d) process.stderr.write(` → ${(d as { winner: string }).winner}`);
+      process.stderr.write(` (${d.reason})\n`);
+    }
+  }
+
+  // Baseline comparison (patch verification)
+  if (baseline && candidates.length >= 2) {
+    const patchedCandidates = candidates.filter((c) => c !== baseline);
+    for (const patched of patchedCandidates) {
+      // Run baseline separately
+      const baselineResult = await runRedTeamGate({
+        dataset, candidates: [baseline], judges,
+        caller: candidateCallers[baseline] ?? makeCaller(...Object.values(parseProviderModel(baseline, defaultProvider)) as [string, string]),
+        judge_callers: judgeCallers, signing_key: signingKey,
+      });
+
+      const patchedResult = await runRedTeamGate({
+        dataset, candidates: [patched], judges,
+        caller: candidateCallers[patched]!,
+        judge_callers: judgeCallers, signing_key: signingKey,
+      });
+
+      const verdict = verifyPatchHolds({
+        before: baselineResult.attackReport,
+        after: patchedResult.attackReport,
+        baselineCandidate: baseline,
+        patchedCandidate: patched,
+      });
+
+      process.stderr.write(`\n  ── Patch Verification: ${baseline} → ${patched} ──\n\n`);
+      const bSummary = baselineResult.attackReport.candidates[0]!;
+      const aSummary = patchedResult.attackReport.candidates[0]!;
+      printTable(
+        ['', 'Baseline', 'Patched'],
+        [
+          ['Survived', String(bSummary.survived), String(aSummary.survived)],
+          ['Failed', String(bSummary.failed), String(aSummary.failed)],
+          ['Survival Rate', `${(bSummary.survival_rate * 100).toFixed(0)}%`, `${(aSummary.survival_rate * 100).toFixed(0)}%`],
+        ],
+      );
+      process.stderr.write(`\n  resolved:         ${verdict.resolved.length} vulnerabilities fixed\n`);
+      process.stderr.write(`  still vulnerable: ${verdict.stillVulnerable.length}\n`);
+      process.stderr.write(`  regressions:      ${verdict.regressed.length}\n`);
+      process.stderr.write(`\n  verdict: ${verdict.holds ? '✓ PATCH HOLDS' : '✗ PATCH DOES NOT HOLD'}\n`);
+
+      if (verdict.regressed.length > 0) {
+        process.stderr.write('\n  Regressions:\n');
+        for (const id of verdict.regressed) process.stderr.write(`    ✗ ${id}\n`);
+      }
+      if (verdict.stillVulnerable.length > 0) {
+        process.stderr.write('\n  Still Vulnerable:\n');
+        for (const id of verdict.stillVulnerable) process.stderr.write(`    ! ${id}\n`);
+      }
+    }
+  }
+
+  // Build full JSON report
+  const fullReport = {
+    mode: 'scan',
+    generated_at: result.attackReport.generated_at,
+    dataset_content_hash: result.attackReport.dataset_content_hash,
+    candidates: result.attackReport.candidates.map((c) => ({
+      candidate_ref: c.candidate_ref,
+      total: c.total,
+      survived: c.survived,
+      failed: c.failed,
+      survival_rate: c.survival_rate,
+      by_category: c.by_category,
+      vulnerabilities: c.vulnerabilities.map((v) => {
+        const item = dataset.items?.find((it) => it.id === v.item_id);
+        const attackContent = item?.input
+          ? (typeof item.input === 'string' ? item.input : JSON.stringify(item.input))
+          : '';
+        const row = result.replayRows.find((r) => r.item_id === v.item_id && r.candidate_ref === c.candidate_ref);
+        return {
+          item_id: v.item_id,
+          category: v.category,
+          mapped_asi: v.mapped_asi,
+          score: v.score,
+          outcome: v.outcome,
+          reasoning: v.reasoning,
+          attack: truncate(attackContent, 500),
+          response: truncate(row?.content ?? '', 500),
+        };
+      }),
+    })),
+    by_asi: result.attackReport.by_asi,
+    gate_decision: result.gateResult?.decision ?? null,
+  };
+
+  const json = JSON.stringify(fullReport, null, 2);
+  if (reportPath) {
+    await writeFile(reportPath, json, 'utf-8');
+    process.stderr.write(`\n  report: ${reportPath}\n`);
+  }
+  const tracePath = await saveTrace('scan', json);
+  process.stderr.write(`  traces: ${tracePath}\n`);
+  if (!reportPath) process.stdout.write(json + '\n');
+
+  return 0;
+}
+
+// ── eval ─────────────────────────────────────────────────────────────
+
+async function cmdEval(argv: ReadonlyArray<string>): Promise<number> {
+  const config = await loadConfig(parseArgs(argv).multi['config']?.[0]);
+  const args = resolveCommonArgs(argv, config);
+  const { multi, single, candidates, judges, defaultProvider, judgeProvider, signingKey, reportPath, baseline } = args;
+  const format = (args.format ?? 'json') as 'json' | 'table';
+  const dryRun = single['dry-run'] === true;
 
   const datasetSource = (multi['dataset-source']?.[0] ?? config.dataset_source ?? 'redteam') as DatasetSourceKind;
   const datasetPath = multi['dataset']?.[0] ?? config.dataset;
-  const baseline = multi['baseline']?.[0] ?? config.baseline;
   const threshold = Number(multi['threshold']?.[0] ?? config.threshold ?? 0.02);
-  const reportPath = multi['report']?.[0] ?? config.report;
-  const defaultProvider = resolveProvider(multi['provider']?.[0] ?? config.provider);
-  const judgeProvider = resolveProvider(multi['judge-provider']?.[0] ?? config.judge_provider ?? multi['provider']?.[0] ?? config.provider);
-  const signingKey =
-    multi['signing-key']?.[0] ??
-    config.signing_key ??
-    process.env.GATELANE_SIGNING_KEY ??
-    'dev-only-insecure-signing-key';
 
   if (candidates.length === 0 || judges.length === 0) {
     process.stderr.write(
@@ -353,32 +573,25 @@ async function cmdGate(argv: ReadonlyArray<string>): Promise<number> {
     return 2;
   }
 
-  // Print run summary
-  process.stderr.write(`\n  candidates: ${candidates.join(', ')}\n`);
+  process.stderr.write(`\n  mode:       eval (quality evaluation)\n`);
+  process.stderr.write(`  candidates: ${candidates.join(', ')}\n`);
   process.stderr.write(`  judges:     ${judges.join(', ')}\n`);
   process.stderr.write(`  threshold:  ${threshold}\n`);
   if (datasetPath) process.stderr.write(`  dataset:    ${datasetPath}\n`);
   else process.stderr.write(`  dataset:    ${datasetSource} (generated)\n`);
   process.stderr.write(`  format:     ${format}\n`);
 
-  // Dry run — validate config + env vars, then exit
   if (dryRun) {
     process.stderr.write('\n  [dry-run] validating providers...\n');
     const errors: string[] = [];
     for (const ref of [...candidates, ...judges]) {
-      const { provider, model } = parseProviderModel(ref, defaultProvider);
+      const { provider } = parseProviderModel(ref, defaultProvider);
       if (provider === 'mock') continue;
       const reg = PROVIDER_REGISTRY[provider];
-      if (!reg) {
-        errors.push(`  ✗ ${ref}: unknown provider "${provider}"`);
-        continue;
-      }
+      if (!reg) { errors.push(`  ✗ ${ref}: unknown provider "${provider}"`); continue; }
       const hasKey = !!process.env[reg.envKey] || reg.keyOptional;
-      if (hasKey) {
-        process.stderr.write(`  ✓ ${ref} — ${reg.envKey} found\n`);
-      } else {
-        errors.push(`  ✗ ${ref}: missing ${reg.envKey}`);
-      }
+      if (hasKey) process.stderr.write(`  ✓ ${ref} — ${reg.envKey} found\n`);
+      else errors.push(`  ✗ ${ref}: missing ${reg.envKey}`);
       if (provider === 'cloudflare' && !process.env.CLOUDFLARE_ACCOUNT_ID) {
         errors.push(`  ✗ ${ref}: missing CLOUDFLARE_ACCOUNT_ID`);
       }
@@ -406,20 +619,9 @@ async function cmdGate(argv: ReadonlyArray<string>): Promise<number> {
     });
   }
 
-  // Build callers — candidates run in parallel
-  const candidateCallers: Record<string, LLMCaller> = {};
-  for (const ref of candidates) {
-    const { provider, model } = parseProviderModel(ref, defaultProvider);
-    candidateCallers[ref] = makeCaller(provider, model);
-  }
-
+  const candidateCallers = buildCallers(candidates, defaultProvider);
+  const judgeCallers = buildCallers(judges, judgeProvider);
   const firstCandidateCaller = candidateCallers[candidates[0]!]!;
-
-  const judgeCallers: Record<string, LLMCaller> = {};
-  for (const judgeRef of judges) {
-    const { provider, model } = parseProviderModel(judgeRef, judgeProvider);
-    judgeCallers[judgeRef] = makeCaller(provider, model);
-  }
 
   const runner = createRunner({
     caller: firstCandidateCaller,
@@ -430,10 +632,8 @@ async function cmdGate(argv: ReadonlyArray<string>): Promise<number> {
       const input = item.input;
       if (Array.isArray(input)) {
         return input
-          .filter(
-            (m): m is { role: string; content: string } =>
-              typeof m === 'object' && m !== null && 'role' in m && 'content' in m,
-          )
+          .filter((m): m is { role: string; content: string } =>
+            typeof m === 'object' && m !== null && 'role' in m && 'content' in m)
           .map((m) => ({ role: m.role as 'system' | 'user' | 'assistant', content: m.content }));
       }
       return [{ role: 'user', content: String(input ?? '') }];
@@ -443,9 +643,7 @@ async function cmdGate(argv: ReadonlyArray<string>): Promise<number> {
   setGateRunner(runner);
   try {
     const result = await runGate({
-      candidates,
-      dataset,
-      judges,
+      candidates, dataset, judges,
       ...(baseline !== undefined ? { baseline } : {}),
       policy: {
         min_delta: threshold,
@@ -458,16 +656,12 @@ async function cmdGate(argv: ReadonlyArray<string>): Promise<number> {
 
     const metrics = result.candidate_metrics ?? {};
     const decisionAction = typeof result.decision === 'object' && result.decision !== null
-      ? (result.decision as { action: string }).action
-      : String(result.decision);
+      ? (result.decision as { action: string }).action : String(result.decision);
     const decisionWinner = typeof result.decision === 'object' && result.decision !== null && 'winner' in result.decision
-      ? String((result.decision as { winner: string }).winner)
-      : undefined;
+      ? String((result.decision as { winner: string }).winner) : undefined;
     const decisionReason = typeof result.decision === 'object' && result.decision !== null && 'reason' in result.decision
-      ? String((result.decision as { reason: string }).reason)
-      : undefined;
+      ? String((result.decision as { reason: string }).reason) : undefined;
 
-    // Table output to stderr (always show if format=table)
     if (format === 'table') {
       const tableRows = candidates.map((ref) => {
         const m = metrics[ref];
@@ -484,14 +678,14 @@ async function cmdGate(argv: ReadonlyArray<string>): Promise<number> {
       });
       process.stderr.write('\n');
       printTable(['Candidate', 'Score', 'Pass Rate', 'Cost', 'Latency', 'Items', 'Decision'], tableRows);
-      process.stderr.write(`\n  gate: ${decisionAction}`);
+      process.stderr.write(`\n  eval: ${decisionAction}`);
       if (decisionWinner) process.stderr.write(` → ${decisionWinner}`);
       if (decisionReason) process.stderr.write(` (${decisionReason})`);
       process.stderr.write('\n\n');
     }
 
-    // Full report object
     const fullReport = {
+      mode: 'eval',
       gate_run_id: result.report.gate_run_id,
       report_id: result.report.id,
       decision: result.decision,
@@ -501,65 +695,55 @@ async function cmdGate(argv: ReadonlyArray<string>): Promise<number> {
       signature: result.report.signature,
       candidate_metrics: Object.fromEntries(
         Object.entries(metrics).map(([ref, m]) => [ref, {
-          mean_score: m.mean_score,
-          pass_rate: m.pass_rate,
-          n_items: m.n_items,
-          total_cost_usd: m.total_cost_usd,
-          mean_latency_ms: m.mean_latency_ms,
-          aggregate_delta: m.aggregate_delta,
-          cost_delta: m.cost_delta,
-          latency_delta: m.latency_delta,
+          mean_score: m.mean_score, pass_rate: m.pass_rate, n_items: m.n_items,
+          total_cost_usd: m.total_cost_usd, mean_latency_ms: m.mean_latency_ms,
+          aggregate_delta: m.aggregate_delta, cost_delta: m.cost_delta, latency_delta: m.latency_delta,
         }]),
       ),
       verdicts: (result.verdicts ?? []).map((v) => ({
-        candidate_ref: v.candidate_ref,
-        judge_ref: v.judge_ref,
-        item_id: v.item_id,
-        outcome: v.outcome,
-        score: v.score,
-        reasoning: v.reasoning,
+        candidate_ref: v.candidate_ref, judge_ref: v.judge_ref, item_id: v.item_id,
+        outcome: v.outcome, score: v.score, reasoning: v.reasoning,
       })),
       replay_rows: (result.replay_rows ?? []).map((r) => ({
-        item_id: r.item_id,
-        candidate_ref: r.candidate_ref,
-        content: r.response.content.length > 500
-          ? r.response.content.slice(0, 500) + '…'
-          : r.response.content,
-        cost_usd: r.response.cost_usd,
-        latency_ms: r.response.latency_ms,
-        tokens_in: r.response.tokens_in,
-        tokens_out: r.response.tokens_out,
+        item_id: r.item_id, candidate_ref: r.candidate_ref,
+        content: truncate(r.response.content, 500),
+        cost_usd: r.response.cost_usd, latency_ms: r.response.latency_ms,
+        tokens_in: r.response.tokens_in, tokens_out: r.response.tokens_out,
       })),
       policy: result.report.policy,
     };
 
     const json = JSON.stringify(fullReport, null, 2);
-
-    // Save report to file
-    if (reportPath !== undefined) {
+    if (reportPath) {
       await writeFile(reportPath, json, 'utf-8');
       process.stderr.write(`  report: ${reportPath}\n`);
     }
-
-    // Always save traces to .gatelane/traces/YYYY-MM-DD/<run-id>.json
-    const today = new Date().toISOString().slice(0, 10);
-    const traceDir = resolve('.gatelane', 'traces', today);
-    await mkdir(traceDir, { recursive: true });
-    const tracePath = join(traceDir, `${result.report.gate_run_id}.json`);
-    await writeFile(tracePath, json, 'utf-8');
+    const tracePath = await saveTrace('eval', json);
     process.stderr.write(`  traces: ${tracePath}\n`);
-
-    // JSON summary to stdout (machine-readable)
-    if (!reportPath) {
-      process.stdout.write(json + '\n');
-    }
+    if (!reportPath) process.stdout.write(json + '\n');
     return 0;
   } finally {
     resetGateRunner();
   }
 }
 
-async function cmdFreezeSlice(argv: ReadonlyArray<string>): Promise<number> {
+// ── run (scan + eval) ────────────────────────────────────────────────
+
+async function cmdRun(argv: ReadonlyArray<string>): Promise<number> {
+  process.stderr.write('\n  ═══ gatelane run: scan + eval ═══\n');
+
+  process.stderr.write('\n  ── Phase 1: scan ──\n');
+  const scanResult = await cmdScan(argv);
+  if (scanResult !== 0) return scanResult;
+
+  process.stderr.write('\n  ── Phase 2: eval ──\n');
+  const evalResult = await cmdEval(argv);
+  return evalResult;
+}
+
+// ── snapshot ─────────────────────────────────────────────────────────
+
+async function cmdSnapshot(argv: ReadonlyArray<string>): Promise<number> {
   const { multi } = parseArgs(argv);
   const window = multi['window']?.[0] ?? '7d';
   const output = multi['output']?.[0];
@@ -572,7 +756,7 @@ async function cmdFreezeSlice(argv: ReadonlyArray<string>): Promise<number> {
   }
   if (!endpoint || !token) {
     process.stderr.write(
-      'error: freeze-slice needs a Worker endpoint. Pass --endpoint <url> --token <capture-token>\n' +
+      'error: snapshot needs a Worker endpoint. Pass --endpoint <url> --token <capture-token>\n' +
         '       or set GATELANE_ENDPOINT / GATELANE_CAPTURE_TOKEN in .env.\n',
     );
     return 2;
@@ -587,6 +771,14 @@ async function cmdFreezeSlice(argv: ReadonlyArray<string>): Promise<number> {
     input: c.input.prompt.length === 1
       ? c.input.prompt[0].content
       : c.input.prompt.map((m) => ({ role: m.role, content: m.content })),
+    expected: c.output,
+    metadata: {
+      model: c.input.model,
+      cost_usd: c.cost_usd,
+      latency_ms: c.latency_ms,
+      captured_at: c.completed_at,
+      ...(c.input.metadata ?? {}),
+    },
   }));
   const dataset = await freezeDataset({
     source_kind: 'prod',
@@ -598,6 +790,8 @@ async function cmdFreezeSlice(argv: ReadonlyArray<string>): Promise<number> {
   process.stdout.write(`frozen dataset (${dataset.item_count} items) → ${output}\n`);
   return 0;
 }
+
+// ── init ─────────────────────────────────────────────────────────────
 
 async function cmdInit(): Promise<number> {
   const configPath = resolve('gatelane.config.yaml');
@@ -629,12 +823,12 @@ judges:
 threshold: 0.02
 # baseline: openai:gpt-4o-mini  # compare against this candidate
 # report: report.json           # write report to file
-# format: table                 # or: json (default)
+# format: table                 # or: json (default for eval)
 `;
 
   await writeFile(configPath, starter, 'utf-8');
   process.stdout.write('Created gatelane.config.yaml\n');
-  process.stdout.write('Next: add your API keys to .env, then run `npx gatelane gate`\n');
+  process.stdout.write('Next: add your API keys to .env, then run `npx gatelane scan` or `npx gatelane eval`\n');
   return 0;
 }
 
@@ -653,9 +847,15 @@ async function main(argv: ReadonlyArray<string>): Promise<number> {
     process.stdout.write(HELP);
     return 0;
   }
-  if (command === 'gate') return cmdGate(argv.slice(1));
-  if (command === 'freeze-slice') return cmdFreezeSlice(argv.slice(1));
+  if (command === 'scan') return cmdScan(argv.slice(1));
+  if (command === 'eval') return cmdEval(argv.slice(1));
+  if (command === 'run') return cmdRun(argv.slice(1));
+  if (command === 'snapshot') return cmdSnapshot(argv.slice(1));
   if (command === 'init') return cmdInit();
+  // Backwards compat aliases
+  if (command === 'gate') return cmdEval(argv.slice(1));
+  if (command === 'redteam') return cmdScan(argv.slice(1));
+  if (command === 'freeze-slice') return cmdSnapshot(argv.slice(1));
   process.stderr.write(`unknown command: ${command}\n`);
   return 2;
 }

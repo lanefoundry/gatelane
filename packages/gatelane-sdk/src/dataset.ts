@@ -30,12 +30,19 @@ export type FrozenDataset = {
   readonly items?: ReadonlyArray<DatasetItem>;
 };
 
+import type { Turn } from './capture.js';
+
 export type DatasetItem = {
   readonly id: string;
   /** For red-team: the attack payload. For prod: the captured user input. For compliance: the test case. */
   readonly input: unknown;
   /** Optional expected outcome (for compliance / eval datasets). */
   readonly expected?: unknown;
+  /** Full multi-turn agent trace from the original capture, when available.
+   *  Includes tool calls, tool results, and intermediate assistant turns. */
+  readonly turns?: ReadonlyArray<Turn>;
+  /** Metadata from the original capture (model, cost, latency, etc.). */
+  readonly metadata?: Record<string, unknown>;
   /** OWASP Agentic Top 10 mapping, if known. */
   readonly mapped_asi?: 'ASI01' | 'ASI02' | 'ASI03' | 'ASI04' | 'ASI05' | 'ASI06' | 'ASI07' | 'ASI08' | 'ASI09' | 'ASI10';
   /** MITRE ATLAS technique ID, if known. */

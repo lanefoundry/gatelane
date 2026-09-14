@@ -9,8 +9,8 @@
  *   2. Replay each (candidate, item) via LLMCaller.
  *   3. For each (candidate, item, judge), call LLMJudge and parse verdict.
  *   4. Compare → per-candidate metrics + judge matrix.
- *   5. Sign the resulting PromotionReport via HMAC-SHA256.
- *   6. Evaluate policy → PromotionDecision.
+ *   5. Sign the resulting GateReport via HMAC-SHA256.
+ *   6. Evaluate policy → GateDecision.
  *
  * @see docs/prd.md §5.1 — The gate
  */
@@ -20,7 +20,7 @@ import {
   type GateRunResult,
   type GateRunner,
 } from '@lanefoundry/gatelane-sdk/gate';
-import type { PromotionReport } from '@lanefoundry/gatelane-sdk/promotion';
+import type { GateReport } from '@lanefoundry/gatelane-sdk/promotion';
 import { shaOfCandidateRef } from '@lanefoundry/gatelane-sdk';
 import { DEFAULT_POLICY } from '@lanefoundry/gatelane-sdk';
 
@@ -233,7 +233,7 @@ export function createRunner(opts: RunnerOptions): GateRunner {
       }
     }
 
-    const baseReport: PromotionReport = {
+    const baseReport: GateReport = {
       id: reportId,
       gate_run_id: runId,
       dataset_content_hash: args.dataset.content_hash,
@@ -257,7 +257,7 @@ export function createRunner(opts: RunnerOptions): GateRunner {
       span.setAttribute('sign.signature_length', sig.length);
       return sig;
     });
-    const signed: PromotionReport = { ...baseReport, signature };
+    const signed: GateReport = { ...baseReport, signature };
 
     // Audit: sign
     if (opts.audit_db) {
@@ -278,16 +278,16 @@ export function createRunner(opts: RunnerOptions): GateRunner {
         ...(args.approver !== undefined ? { approver: args.approver } : {}),
       });
       span.setAttribute('evaluate.action', result.decision.action);
-      span.setAttribute('evaluate.winner', result.decision.action === 'promote' ? (result.decision as { winner: string }).winner : '');
+      span.setAttribute('evaluate.winner', result.decision.action === 'pass' ? (result.decision as { winner: string }).winner : '');
       span.setAttribute('evaluate.reason', result.decision.reason);
       return result;
     });
 
-    // Audit: promote (or rollback/hold)
+    // Audit: gate decision
     if (opts.audit_db) {
-      await createAndAppendAuditEntry(runId, 'promote', {
+      await createAndAppendAuditEntry(runId, 'gate_decision', {
         decision: decision.action,
-        winner: decision.action === 'promote' ? (decision as { winner: string }).winner : undefined,
+        winner: decision.action === 'pass' ? (decision as { winner: string }).winner : undefined,
         reason: decision.reason,
       }, opts.signing_key, opts.audit_db);
     }

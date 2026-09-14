@@ -15,9 +15,9 @@ import { shaOfCandidateRef } from './candidate.js';
 import type { FrozenDataset } from './dataset.js';
 import {
   DEFAULT_POLICY,
-  type PromotionDecision,
-  type PromotionPolicy,
-  type PromotionReport,
+  type GateDecision,
+  type GatePolicy,
+  type GateReport,
 } from './promotion.js';
 
 export type GateRunArgs = {
@@ -25,7 +25,7 @@ export type GateRunArgs = {
   readonly dataset: FrozenDataset;
   readonly judges: ReadonlyArray<string>;
   readonly baseline?: string;
-  readonly policy?: PromotionPolicy;
+  readonly policy?: GatePolicy;
   readonly approver?: string;
 };
 
@@ -68,8 +68,8 @@ export type GateCandidateMetric = {
 };
 
 export type GateRunResult = {
-  readonly report: PromotionReport;
-  readonly decision: PromotionDecision;
+  readonly report: GateReport;
+  readonly decision: GateDecision;
   /** Per-item replay outputs for every (candidate, item) pair. */
   readonly replay_rows?: ReadonlyArray<GateReplayRow>;
   /** Per-item judge verdicts with scores and reasoning. */
@@ -120,7 +120,7 @@ export async function stubRunGate(args: GateRunArgs): Promise<GateRunResult> {
     judge_shas[judge] = await shaOfCandidateRef(judge);
   }
 
-  const report: PromotionReport = {
+  const report: GateReport = {
     id: reportId,
     gate_run_id: runId,
     dataset_content_hash: args.dataset.content_hash,
@@ -150,10 +150,10 @@ export async function stubRunGate(args: GateRunArgs): Promise<GateRunResult> {
   };
 
   const winner = args.candidates[0] ?? baseline;
-  const decision: PromotionDecision = policy.approval_required
+  const decision: GateDecision = policy.approval_required
     ? { action: 'hold_for_review', reason: 'approval_required' }
     : {
-        action: 'promote',
+        action: 'pass',
         winner,
         reason: `stub: all candidates passed policy (min_delta=${policy.min_delta})`,
       };

@@ -55,7 +55,7 @@ export type LLMResponse = {
 };
 
 export interface LLMCaller {
-  /** Returns provider name (used in PromotionReport.candidate_shas metadata). */
+  /** Returns provider name (used in GateReport.candidate_shas metadata). */
   readonly provider: string;
   /** Make one LLM call. Must not throw on 4xx; return a finish_reason=error response instead. */
   call(request: LLMRequest): Promise<LLMResponse>;
