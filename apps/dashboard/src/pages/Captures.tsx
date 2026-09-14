@@ -1,17 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
 import { Layout } from "../components/Layout";
 import { DataTable } from "../components/DataTable";
-import { getAuditLog } from "../lib/api";
+import { getCaptures } from "../lib/api";
 
 export function CapturesPage() {
   const { data, isLoading, error } = useQuery({
-    queryKey: ["audit-log-captures"],
-    queryFn: async () => {
-      const res = await getAuditLog();
-      return (res.entries as Record<string, unknown>[]).filter(
-        (e) => e.action === "capture",
-      );
-    },
+    queryKey: ["captures"],
+    queryFn: () => getCaptures({ limit: 100 }),
   });
 
   return (
@@ -22,11 +17,20 @@ export function CapturesPage() {
       {data && (
         <DataTable
           columns={[
-            { key: "resource_id", label: "Capture ID" },
-            { key: "detail", label: "Detail", render: (r) => JSON.stringify(r.detail) },
-            { key: "created_at", label: "Time" },
+            { key: "id", label: "ID", render: (r) => String(r.id).slice(0, 16) + "..." },
+            { key: "model", label: "Model" },
+            { key: "provider", label: "Provider" },
+            { key: "costCents", label: "Cost", render: (r) => {
+              const cents = Number(r.costCents ?? 0);
+              return cents > 0 ? `$${(cents / 100).toFixed(4)}` : "-";
+            }},
+            { key: "latencyMs", label: "Latency", render: (r) => {
+              const ms = Number(r.latencyMs ?? 0);
+              return ms > 0 ? `${ms}ms` : "-";
+            }},
+            { key: "createdAt", label: "Created" },
           ]}
-          rows={data}
+          rows={data.captures}
           emptyMessage="No captures yet. Send a POST to /v1/capture to get started."
         />
       )}

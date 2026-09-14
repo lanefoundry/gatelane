@@ -80,12 +80,25 @@ Legend:
 
 | Surface | Status | Wire format |
 |---|---|---|
-| `gatelane gate ...` | ✓ (JS) | `POST /v1/backtest` |
-| `gatelane freeze-slice ...` | ✓ (JS) | `POST /v1/dataset` |
-| `gatelane init` | · | `GET /v1/config` |
+| `gatelane scan` | ✓ (JS) | n/a (local) |
+| `gatelane eval` | ✓ (JS) | n/a (local) |
+| `gatelane run` (scan + eval) | ✓ (JS) | n/a (local) |
+| `gatelane snapshot` | ✓ (JS) | `GET /v1/captures` |
+| `gatelane canary start/status/observe/advance/rollback/tick` | ✓ (JS) | `/v1/canaries/*` |
+| `gatelane init` | ✓ (JS) | n/a |
 | `gatelane serve` (worker + dashboard) | · | n/a |
 
 CLI is JS-only in v1; Python SDK users go straight to the HTTP API.
+
+## CI/CD Adapter
+
+| Surface | Status | Wire format |
+|---|---|---|
+| `parseGateOutput()` | ✓ (JS) | reads report JSON |
+| `toGitHubOutput()` | ✓ (JS) | writes `$GITHUB_OUTPUT` |
+| `exitCodeForDecision()` | ✓ (JS) | n/a |
+| `formatGitHubSummary()` | ✓ (JS) | writes `$GITHUB_STEP_SUMMARY` |
+| `action.ts` (standalone) | ✓ (JS) | env: `GATELANE_REPORT_PATH` |
 
 ## Audit
 

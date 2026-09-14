@@ -107,7 +107,7 @@ gatelane 是**市場上其他產品都沒有提供的一個原語**：基於回�
 
 - Node.js 22+、pnpm 10、Git
 - Cloudflare 帳戶（用於生產部署）
-- 用於評估/回測裁判模型的 LLM API 金鑰（OpenAI、Anthropic、Gemini 或自建）
+- 用於評估/回測裁判模型的 LLM API 金鑰（OpenAI、Anthropic、Gemini、OpenCode Zen 或自建）
 
 ### 安裝
 
@@ -125,6 +125,9 @@ cp .env.example .env
 GATELANE_JUDGE_PROVIDER=openai
 GATELANE_JUDGE_API_KEY=sk-...
 GATELANE_JUDGE_MODEL=gpt-4o
+
+# 或使用 OpenCode Zen（一個 key 即可存取 64 個模型）
+# OPENCODE_API_KEY=...
 
 # 捕獲 API 認證（>= 32 個隨機字元）
 GATELANE_CAPTURE_TOKEN=$(openssl rand -hex 32)
@@ -284,10 +287,16 @@ pnpm format           # 以 Prettier 自動格式化
 | GET | `/v1/promotions` | 列出所有升級報告 |
 | GET | `/v1/promotions/:id` | 取得指定升級報告 |
 | GET | `/v1/audit-log` | 列出稽核日誌項目 |
+| GET | `/v1/canaries` | 列出 canary 部署 |
+| GET | `/v1/canaries/:id` | 取得指定 canary 記錄 |
+| POST | `/v1/canaries` | 啟動 canary 部署（需要 Bearer token） |
+| POST | `/v1/canaries/:id/observe` | 記錄指標觀察值（需要 Bearer token） |
+| POST | `/v1/canaries/:id/advance` | 推進 canary 狀態機（需要 Bearer token） |
+| POST | `/v1/canaries/:id/rollback` | 手動回滾（需要 Bearer token） |
 
 ### 儀表板
 
-儀表板是一個 React + Vite 應用，包含 6 個頁面（捕獲、資料集、重播執行、升級報告、紅隊、稽核日誌）。本地啟動方式：
+儀表板是一個 React + Vite 應用，包含 7 個頁面（捕獲、資料集、重播執行、升級報告、Canary、紅隊、稽核日誌）。本地啟動方式：
 
 ```bash
 cd apps/dashboard

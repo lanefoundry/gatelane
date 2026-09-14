@@ -1,5 +1,5 @@
 /**
- * HMAC-SHA256 signing for PromotionReport.
+ * HMAC-SHA256 signing for GateReport.
  *
  * The signing key comes from the `GATELANE_REPORT_SIGNING_KEY` env var (32+ random
  * bytes recommended). The signed payload is the canonical JSON of the report
@@ -11,9 +11,9 @@
  * @see docs/prd.md §5.1 — The gate
  */
 
-import type { PromotionReport } from '@lanefoundry/gatelane-sdk';
+import type { GateReport } from '@lanefoundry/gatelane-sdk';
 /** Stable JSON for signing (excludes `signature`; recursively sorts keys). */
-export function canonicalizeReport(report: PromotionReport): string {
+export function canonicalizeReport(report: GateReport): string {
   const { signature: _sig, ...rest } = report;
   void _sig; // excluded from canonical JSON; keep destructure for clarity
   return JSON.stringify(sortKeysDeep(rest));
@@ -35,8 +35,8 @@ function sortKeysDeep(value: unknown): unknown {
 
  const encoder = new TextEncoder();
 
-/** Sign a PromotionReport with the given key. Returns the new signature string. */
-export async function signReport(report: PromotionReport, key: string): Promise<string> {
+/** Sign a GateReport with the given key. Returns the new signature string. */
+export async function signReport(report: GateReport, key: string): Promise<string> {
   if (key.length < 16) {
     throw new Error('signing key must be ≥ 16 chars; got ' + key.length);
   }
@@ -53,8 +53,8 @@ export async function signReport(report: PromotionReport, key: string): Promise<
   return base64url(new Uint8Array(sig));
 }
 
-/** Verify a PromotionReport's signature. Returns true if signature matches. */
-export async function verifyReport(report: PromotionReport, key: string): Promise<boolean> {
+/** Verify a GateReport's signature. Returns true if signature matches. */
+export async function verifyReport(report: GateReport, key: string): Promise<boolean> {
   const expected = await signReport(report, key);
   return constantTimeEqual(expected, report.signature);
 }

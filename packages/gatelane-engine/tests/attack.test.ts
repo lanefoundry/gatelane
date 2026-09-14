@@ -416,7 +416,7 @@ describe('redteam.ts — attack report + patch verify', () => {
 
     expect(result.gateResult).not.toBeNull();
     expect(result.gateResult!.report.signature).not.toBe('pending');
-    expect(result.gateResult!.decision.action).toMatch(/^(promote|rollback|hold_for_review)$/);
+    expect(result.gateResult!.decision.action).toMatch(/^(pass|block|hold_for_review)$/);
     expect(result.gateResult!.evaluate.rule_results).toBeDefined();
   });
 

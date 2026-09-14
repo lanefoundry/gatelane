@@ -12,7 +12,7 @@ export async function evaluatePromotion(
 ): Promise<PromotionReport> {
   const summary = await compare(env, opts.replayRunId);
   const delta = summary.candidateAvgScore - summary.baselineAvgScore;
-  const decision = delta >= opts.threshold ? "promote" : "rollback";
+  const decision = delta >= opts.threshold ? "pass" : "block";
 
   const id = crypto.randomUUID();
   const signature = await sign(id, delta, decision);

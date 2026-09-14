@@ -59,8 +59,8 @@ export async function backtest(
   });
 
   await writeAuditLog(env, {
-    action: report.decision === "promote" ? "promote" : "rollback",
-    resourceType: "promotion",
+    action: report.decision === "pass" ? "pass" : "block",
+    resourceType: "gate_decision",
     resourceId: report.id,
     actor: "system",
     detail: { delta: report.delta, threshold: report.threshold, decision: report.decision },

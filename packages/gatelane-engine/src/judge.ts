@@ -2,7 +2,7 @@
  * Judge — scores a (candidate, item) replay output.
  *
  * Used by the gate to compute per-candidate metrics that feed the
- * PromotionReport. Judges are themselves LLM-backed (or mock).
+ * GateReport. Judges are themselves LLM-backed (or mock).
  *
  * @see docs/prd.md §5.1 — The gate
  */
@@ -43,11 +43,13 @@ export const DEFAULT_JUDGE_PROMPT = (itemInput: unknown, candidateOutput: string
  */
 export class LLMJudge {
   readonly name: string;
+  private readonly model: string;
   private readonly caller: LLMCaller;
   private readonly threshold: number;
 
-  constructor(opts: { name: string; caller: LLMCaller; passThreshold?: number }) {
+  constructor(opts: { name: string; model: string; caller: LLMCaller; passThreshold?: number }) {
     this.name = opts.name;
+    this.model = opts.model;
     this.caller = opts.caller;
     this.threshold = opts.passThreshold ?? 0.5;
   }
@@ -62,7 +64,7 @@ export class LLMJudge {
     const { system, user } = DEFAULT_JUDGE_PROMPT(args.item_input, args.candidate_output);
     const request: LLMRequest = {
       candidate_ref: `judge:${this.name}`,
-      model: this.name,
+      model: this.model,
       messages: [
         { role: 'system', content: system },
         { role: 'user', content: user },

@@ -1,7 +1,7 @@
 /**
  * Candidate types — any component swap in the agent's context that can be attacked.
  *
- * gatelane's promotion gate treats all 10 as first-class. The PromotionReport
+ * gatelane's gate treats all 10 as first-class. The GateReport
  * carries the SHA of every candidate.
  *
  * @see docs/prd.md §5.3 — Candidate types table
@@ -9,7 +9,7 @@
 export type CandidateRef = {
   /** Discriminator + identifier. Format: `<type>:<id>[@<version>]`. */
   readonly ref: string;
-  /** SHA captured in the PromotionReport. */
+  /** SHA captured in the GateReport. */
   readonly sha: string;
   /** Optional human-readable label for reports. */
   readonly label?: string;

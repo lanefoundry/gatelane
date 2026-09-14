@@ -9,7 +9,9 @@
       "@lanefoundry/gatelane-sdk": ["../gatelane-sdk/dist/index.d.ts"],
       "@lanefoundry/gatelane-sdk/*": ["../gatelane-sdk/dist/*"],
       "@lanefoundry/gatelane-engine": ["../gatelane-engine/dist/index.d.ts"],
-      "@lanefoundry/gatelane-engine/*": ["../gatelane-engine/dist/*"]
+      "@lanefoundry/gatelane-engine/*": ["../gatelane-engine/dist/*"],
+      "@lanefoundry/source-prod-slice": ["../source-prod-slice/dist/index.d.ts"],
+      "@lanefoundry/source-prod-slice/*": ["../source-prod-slice/dist/*"]
     },
     "skipLibCheck": true
   },

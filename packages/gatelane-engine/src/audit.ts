@@ -18,7 +18,7 @@ export type AuditEventType =
   | 'replay'
   | 'judge'
   | 'compare'
-  | 'promote'
+  | 'gate_decision'
   | 'sign';
 
 /** Audit log entry written to the audit_log table. */

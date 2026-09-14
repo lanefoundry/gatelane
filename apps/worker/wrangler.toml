@@ -7,6 +7,7 @@ compatibility_flags = ["nodejs_compat"]
 binding = "DB"
 database_name = "gatelane"
 database_id = ""  # paste after `wrangler d1 create gatelane`
+migrations_dir = "migrations"
 
 [[r2_buckets]]
 binding = "CAPTURES"
@@ -15,3 +16,7 @@ bucket_name = "gatelane-captures"
 [[kv_namespaces]]
 binding = "GATELANE_KV"
 id = ""  # paste after `wrangler kv namespace create GATELANE_KV`
+
+# Cron triggers — auto-observe + tick canaries every 5 minutes
+[triggers]
+crons = ["*/5 * * * *"]

@@ -38,7 +38,7 @@ from contextlib import asynccontextmanager
 from typing import Any, Callable, TypeVar, overload
 
 from .storage import InMemoryStorage
-from .types import CapturedCall, CaptureMetadata, ChatMessage, StorageAdapter
+from .types import CapturedCall, CaptureMetadata, ChatMessage, StorageAdapter, Turn
 
 # --- module-level active storage ------------------------------------------
 
@@ -71,6 +71,7 @@ async def capture(
     metadata: CaptureMetadata | None = None,
     span_kind: str | None = None,
     dry_run: bool = False,
+    turns: Sequence[Turn] | None = None,
 ) -> Any:
     """Run `coro()` and capture the call.
 
@@ -104,6 +105,7 @@ async def capture(
             span_kind=span_kind,
             model=model,
             metadata=metadata,
+            turns=tuple(turns) if turns is not None else (),
         )
         try:
             await _active_storage.write(record)

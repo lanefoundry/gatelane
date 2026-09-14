@@ -5,7 +5,7 @@
  * @see docs/prd.md §5.2.1 — Red-team dataset
  * @see docs/roadmap.md Week 3-4 — Red-team dataset source
  */
-import type { LLMCaller } from './llm.js';
+import { parseProviderModel, type LLMCaller } from './llm.js';
 import type { ReplayResult, ReplayArgs } from './replay.js';
 import type { JudgeVerdict } from './judge.js';
 import { LLMJudge } from './judge.js';
@@ -13,7 +13,7 @@ import { replay } from './replay.js';
 import { compare } from './compare.js';
 import { evaluate, type EvaluateResult } from './evaluate.js';
 import { signReport } from './sign.js';
-import type { PromotionReport, PromotionDecision, PromotionPolicy } from '@lanefoundry/gatelane-sdk/promotion';
+import type { GateReport, GateDecision, GatePolicy } from '@lanefoundry/gatelane-sdk/promotion';
 import { shaOfCandidateRef } from '@lanefoundry/gatelane-sdk';
 import type { FrozenDataset } from '@lanefoundry/gatelane-sdk/dataset';
 import type { InjectionCategory, InjectionPayload } from './attack.js';
@@ -89,23 +89,38 @@ export type RunRedTeamArgs = {
   /** Master seed for deterministic replay. */
   seed?: number;
   /** Promotion policy for gate decision. */
-  policy?: PromotionPolicy;
+  policy?: GatePolicy;
   /** Optional baseline candidate ref. */
   baseline?: string;
   /** Optional approver (when policy.approval_required). */
   approver?: string;
-  /** Optional signing key — if provided, returns signed PromotionReport. */
+  /** Optional signing key — if provided, returns signed GateReport. */
   signing_key?: string;
+};
+
+/** Lightweight replay row for scan output (no toCapturedCall function). */
+export type ScanReplayRow = {
+  item_id: string;
+  candidate_ref: string;
+  content: string;
+  cost_usd: number;
+  latency_ms: number;
+  tokens_in?: number;
+  tokens_out?: number;
 };
 
 /** Result of running the red-team gate. */
 export type RunRedTeamResult = {
   /** Attack report with vulnerability details. */
   attackReport: AttackReport;
-  /** Gate result (promote/rollback/hold + signed report if signing_key provided). */
+  /** Per-item replay outputs (attack payload → model response). */
+  replayRows: ScanReplayRow[];
+  /** Raw judge verdicts. */
+  verdicts: JudgeVerdict[];
+  /** Gate result (pass/block/hold + signed report if signing_key provided). */
   gateResult: {
-    report: PromotionReport;
-    decision: PromotionDecision;
+    report: GateReport;
+    decision: GateDecision;
     evaluate: EvaluateResult;
   } | null;
 };
@@ -244,7 +259,8 @@ export async function collectVerdicts(args: {
   for (const cand of candidates) {
     for (const judgeRef of judges) {
       const judgeCaller = judge_callers?.[judgeRef] ?? caller;
-      const judge = new LLMJudge({ name: judgeRef, caller: judgeCaller });
+      const { model: judgeModel } = parseProviderModel(judgeRef, 'mock');
+      const judge = new LLMJudge({ name: judgeRef, model: judgeModel, caller: judgeCaller });
       const candRows = replayResult.rows.filter((r) => r.candidate_ref === cand.ref);
       for (const row of candRows) {
         const itemId = row.item_id;
@@ -355,7 +371,7 @@ export async function runRedTeamGate(args: RunRedTeamArgs): Promise<RunRedTeamRe
 
   const runId = crypto.randomUUID();
   const reportId = crypto.randomUUID();
-  const baseReport: PromotionReport = {
+  const baseReport: GateReport = {
     id: reportId,
     gate_run_id: runId,
     dataset_content_hash: dataset.content_hash,
@@ -375,7 +391,7 @@ export async function runRedTeamGate(args: RunRedTeamArgs): Promise<RunRedTeamRe
   let gateResult: RunRedTeamResult['gateResult'] = null;
   if (signing_key) {
     const signature = await signReport(baseReport, signing_key);
-    const signed: PromotionReport = { ...baseReport, signature };
+    const signed: GateReport = { ...baseReport, signature };
     const { decision, rule_results } = evaluate({
       candidates,
       perCandidate,
@@ -386,7 +402,17 @@ export async function runRedTeamGate(args: RunRedTeamArgs): Promise<RunRedTeamRe
     gateResult = { report: signed, decision, evaluate: { decision, rule_results } };
   }
 
-  return { attackReport, gateResult };
+  const scanRows: ScanReplayRow[] = replayResult.rows.map((r) => ({
+    item_id: r.item_id,
+    candidate_ref: r.candidate_ref,
+    content: r.response.content,
+    cost_usd: r.response.cost_usd,
+    latency_ms: r.response.latency_ms,
+    tokens_in: r.response.tokens_in,
+    tokens_out: r.response.tokens_out,
+  }));
+
+  return { attackReport, replayRows: scanRows, verdicts, gateResult };
 }
 
 /**

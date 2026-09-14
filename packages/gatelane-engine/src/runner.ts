@@ -9,8 +9,8 @@
  *   2. Replay each (candidate, item) via LLMCaller.
  *   3. For each (candidate, item, judge), call LLMJudge and parse verdict.
  *   4. Compare → per-candidate metrics + judge matrix.
- *   5. Sign the resulting PromotionReport via HMAC-SHA256.
- *   6. Evaluate policy → PromotionDecision.
+ *   5. Sign the resulting GateReport via HMAC-SHA256.
+ *   6. Evaluate policy → GateDecision.
  *
  * @see docs/prd.md §5.1 — The gate
  */
@@ -20,11 +20,11 @@ import {
   type GateRunResult,
   type GateRunner,
 } from '@lanefoundry/gatelane-sdk/gate';
-import type { PromotionReport } from '@lanefoundry/gatelane-sdk/promotion';
+import type { GateReport } from '@lanefoundry/gatelane-sdk/promotion';
 import { shaOfCandidateRef } from '@lanefoundry/gatelane-sdk';
 import { DEFAULT_POLICY } from '@lanefoundry/gatelane-sdk';
 
-import type { LLMCaller, LLMRequest } from './llm.js';
+import { parseProviderModel, type LLMCaller, type LLMRequest } from './llm.js';
 import { replay, type ReplayArgs } from './replay.js';
 import { LLMJudge, type JudgeVerdict } from './judge.js';
 import { compare } from './compare.js';
@@ -51,6 +51,8 @@ export type RunnerOptions = {
   audit_db?: D1DatabaseLike;
   /** Service name for OTel tracing. */
   tracing_service_name?: string;
+  /** Max concurrent LLM calls during judge stage (default: 5). */
+  concurrency?: number;
 };
 
 export function createRunner(opts: RunnerOptions): GateRunner {
@@ -78,11 +80,10 @@ export function createRunner(opts: RunnerOptions): GateRunner {
     const reportId = crypto.randomUUID();
     const scorerCodeSha = await shaOfCandidateRef(`gatelane-engine:scorer:v0.0.1-dev`);
 
-    const candidates = args.candidates.map((ref) => ({
-      ref,
-      model: ref.startsWith('model:') ? ref.slice('model:'.length) : ref,
-      messages_from_item,
-    }));
+    const candidates = args.candidates.map((ref) => {
+      const { model } = parseProviderModel(ref, 'mock');
+      return { ref, model, messages_from_item };
+    });
 
     // Stage 1: Replay
     const replayArgs: ReplayArgs = {
@@ -102,6 +103,13 @@ export function createRunner(opts: RunnerOptions): GateRunner {
       return result;
     });
 
+    // Warn if most replay rows returned empty content
+    const totalRows = replayResult.rows.length;
+    const emptyRows = replayResult.rows.filter((r) => !r.response.content).length;
+    if (totalRows > 0 && emptyRows > totalRows / 2) {
+      process.stderr.write(`  ⚠ ${emptyRows}/${totalRows} replay rows returned empty content — check provider/model configuration\n`);
+    }
+
     // Audit: replay
     if (opts.audit_db) {
       await createAndAppendAuditEntry(runId, 'replay', {
@@ -113,27 +121,43 @@ export function createRunner(opts: RunnerOptions): GateRunner {
       }, opts.signing_key, opts.audit_db);
     }
 
-    // Stage 2: Judge
+    // Stage 2: Judge (parallel with concurrency limit)
+    const concurrency = opts.concurrency ?? 5;
     const verdicts: JudgeVerdict[] = [];
     await withGateSpan('judge', runId, async (span) => {
+      type JudgeTask = () => Promise<JudgeVerdict>;
+      const tasks: JudgeTask[] = [];
       for (const cand of candidates) {
         for (const judgeRef of args.judges) {
           const judgeCaller = opts.judge_callers?.[judgeRef] ?? opts.caller;
-          const judge = new LLMJudge({ name: judgeRef, caller: judgeCaller });
+          const { model: judgeModel } = parseProviderModel(judgeRef, 'mock');
+          const judge = new LLMJudge({ name: judgeRef, model: judgeModel, caller: judgeCaller });
           const candRows = replayResult.rows.filter((r) => r.candidate_ref === cand.ref);
           for (const row of candRows) {
             const itemId = row.item_id;
             const itemInput = args.dataset.items?.find((it) => (it.id ?? '<anonymous>') === itemId)?.input;
-            const v = await judge.judge({
+            tasks.push(() => judge.judge({
               candidate_ref: cand.ref,
               item_id: itemId,
               item_input: itemInput ?? null,
               candidate_output: row.response.content,
-            });
-            verdicts.push(v);
+            }));
           }
         }
       }
+
+      // Run with concurrency limiter
+      const executing = new Set<Promise<void>>();
+      for (const task of tasks) {
+        const p = task().then((v) => { verdicts.push(v); });
+        executing.add(p);
+        p.finally(() => executing.delete(p));
+        if (executing.size >= concurrency) {
+          await Promise.race(executing);
+        }
+      }
+      await Promise.all(executing);
+
       span.setAttribute('judge.verdicts_count', verdicts.length);
       span.setAttribute('judge.judges', args.judges.join(','));
       span.setAttribute('judge.candidates', args.candidates.join(','));
@@ -216,7 +240,7 @@ export function createRunner(opts: RunnerOptions): GateRunner {
       }
     }
 
-    const baseReport: PromotionReport = {
+    const baseReport: GateReport = {
       id: reportId,
       gate_run_id: runId,
       dataset_content_hash: args.dataset.content_hash,
@@ -240,7 +264,7 @@ export function createRunner(opts: RunnerOptions): GateRunner {
       span.setAttribute('sign.signature_length', sig.length);
       return sig;
     });
-    const signed: PromotionReport = { ...baseReport, signature };
+    const signed: GateReport = { ...baseReport, signature };
 
     // Audit: sign
     if (opts.audit_db) {
@@ -261,21 +285,38 @@ export function createRunner(opts: RunnerOptions): GateRunner {
         ...(args.approver !== undefined ? { approver: args.approver } : {}),
       });
       span.setAttribute('evaluate.action', result.decision.action);
-      span.setAttribute('evaluate.winner', result.decision.action === 'promote' ? (result.decision as { winner: string }).winner : '');
+      span.setAttribute('evaluate.winner', result.decision.action === 'pass' ? (result.decision as { winner: string }).winner : '');
       span.setAttribute('evaluate.reason', result.decision.reason);
       return result;
     });
 
-    // Audit: promote (or rollback/hold)
+    // Audit: gate decision
     if (opts.audit_db) {
-      await createAndAppendAuditEntry(runId, 'promote', {
+      await createAndAppendAuditEntry(runId, 'gate_decision', {
         decision: decision.action,
-        winner: decision.action === 'promote' ? (decision as { winner: string }).winner : undefined,
+        winner: decision.action === 'pass' ? (decision as { winner: string }).winner : undefined,
         reason: decision.reason,
       }, opts.signing_key, opts.audit_db);
     }
 
-    return { report: signed, decision };
+    return {
+      report: signed,
+      decision,
+      replay_rows: replayResult.rows.map((r) => ({
+        item_id: r.item_id,
+        candidate_ref: r.candidate_ref,
+        response: {
+          content: r.response.content,
+          cost_usd: r.response.cost_usd,
+          latency_ms: r.response.latency_ms,
+          tokens_in: r.response.tokens_in,
+          tokens_out: r.response.tokens_out,
+          finish_reason: r.response.finish_reason,
+        },
+      })),
+      verdicts,
+      candidate_metrics: perCandidate,
+    };
   };
 }
 

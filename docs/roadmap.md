@@ -190,25 +190,50 @@ apps/dashboard/
 - [ ] looplane patch validated via Mode B backtest
 - [ ] At least 1 promotion-gate cycle from canary → promote/rollback
 
-## v0.2 (post-demo)
+## v0.2 — Production monitoring + canary
+
+gatelane covers the full lifecycle: pre-deploy → deploy → post-deploy.
+
+### Production monitoring
+
+The same engine that runs pre-deploy scan/eval also monitors production:
+
+```
+Pre-deploy:   scan → eval → pass/block            ← v0.1 (done)
+Deploy:       canary orchestrator (10% → observe)  ← v0.2
+Post-deploy:  monitor → alert → auto-re-scan       ← v0.2
+```
+
+- [ ] **Live trace monitoring**: SDK captures production agent traces (multi-turn + tool calls), surfaces anomalies via the same judge pipeline used in eval
+- [ ] **Quality regression alerts**: continuous eval on a sliding window of production traces — if score drops below baseline, alert and optionally auto-block new deploys
+- [ ] **Attack detection**: run scan vectors against live traffic patterns — detect prompt injection attempts in real-time, not just in pre-deploy testing
+- [ ] **Cost/latency anomaly alerts**: detect spikes in token usage, cost, or latency that indicate model degradation or abuse
+- [ ] **Judge-drift alerts**: detect when judge scoring behavior drifts over time (judge model updated, scoring distribution shifts)
+- [x] **Canary orchestrator CLI**: `gatelane canary` — wire the existing canary state machine (10% → 24h observe → promote/rollback) into the CLI, with live metric ingestion from production traces
+- [x] **Dashboard**: production monitoring view — live traces, alert history, canary status, quality trend charts
+- [x] **Scheduled auto-observe**: Cloudflare cron trigger (every 5 min) collects error rate / latency / cost from captures, feeds into active canaries, auto-rollback on threshold breach
+- [x] **CI/CD adapter**: `@lanefoundry/gatelane-ci-adapter` — parse gate output → GitHub Actions outputs / exit codes / step summary
+
+### Other v0.2 items
 
 - [ ] MCP / non-human identity governance (current `provider-tool-routing` extension)
 - [ ] Taiwan compliance mode (OWASP Agentic Top 10 + MITRE ATLAS + NIST 600-1 → 繁中合規報告)
 - [ ] Cross-judge replay (verify eval holds up if judge is swapped)
-- [ ] Judge-drift alerts
 - [ ] Multi-armed bandit promotion
+- [ ] Snapshot filters (by model, agent, time range, metadata)
 
 ## v1.0 (post-validate)
 
 - [ ] Codelane / groundlane integration: gatelane scans groundlane captures + looplane outputs as part of red team
 - [ ] Hosted mode? (or keep self-host only)
-- [ ] Public promotion primitive (other eval runners can plug in)
+- [ ] Public gate primitive (other eval runners can plug in)
+- [ ] Continuous security scanning: scheduled re-scan against updated attack libraries (new CVEs, new OWASP entries)
+- [ ] Incident response automation: attack detected in production → auto-rollback to last known-good version → alert team
 
 ## What's not on the roadmap
 
 - Workflow control plane / agent orchestration
 - General LLM gateway
-- Pure APM / tracing
 - Visual flow editor
 - Multi-tenant hosted SaaS
 
