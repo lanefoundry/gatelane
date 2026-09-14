@@ -29,9 +29,53 @@ export type GateRunArgs = {
   readonly approver?: string;
 };
 
+/** Lightweight replay row shape (mirrors engine's ReplayRow without importing it). */
+export type GateReplayRow = {
+  readonly item_id: string;
+  readonly candidate_ref: string;
+  readonly response: {
+    readonly content: string;
+    readonly cost_usd: number;
+    readonly latency_ms: number;
+    readonly tokens_in?: number;
+    readonly tokens_out?: number;
+    readonly finish_reason?: string;
+  };
+};
+
+/** Lightweight judge verdict shape (mirrors engine's JudgeVerdict). */
+export type GateJudgeVerdict = {
+  readonly candidate_ref: string;
+  readonly judge_ref: string;
+  readonly item_id: string;
+  readonly outcome: 'pass' | 'fail';
+  readonly score: number;
+  readonly reasoning?: string;
+  readonly cost_usd: number;
+  readonly latency_ms: number;
+};
+
+/** Lightweight per-candidate metric shape (mirrors engine's CandidateMetric). */
+export type GateCandidateMetric = {
+  readonly mean_score: number;
+  readonly pass_rate: number;
+  readonly n_items: number;
+  readonly total_cost_usd: number;
+  readonly mean_latency_ms: number;
+  readonly aggregate_delta: number;
+  readonly cost_delta: number;
+  readonly latency_delta: number;
+};
+
 export type GateRunResult = {
   readonly report: PromotionReport;
   readonly decision: PromotionDecision;
+  /** Per-item replay outputs for every (candidate, item) pair. */
+  readonly replay_rows?: ReadonlyArray<GateReplayRow>;
+  /** Per-item judge verdicts with scores and reasoning. */
+  readonly verdicts?: ReadonlyArray<GateJudgeVerdict>;
+  /** Per-candidate aggregate metrics (mean_score, pass_rate, cost, latency, deltas). */
+  readonly candidate_metrics?: Readonly<Record<string, GateCandidateMetric>>;
 };
 
 /** Runner interface. The engine implements this and registers it. */
@@ -114,5 +158,5 @@ export async function stubRunGate(args: GateRunArgs): Promise<GateRunResult> {
         reason: `stub: all candidates passed policy (min_delta=${policy.min_delta})`,
       };
 
-  return { report, decision };
+  return { report, decision, replay_rows: [], verdicts: [], candidate_metrics: {} };
 }

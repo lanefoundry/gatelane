@@ -2,34 +2,16 @@
 /**
  * gatelane CLI — promotion gate for AI agents.
  *
- * Real engine runner: replay → judge → compare → sign → evaluate.
- *
- * Usage:
- *   gatelane gate --candidate model:gpt-5 --candidate guardrail:v2 \
- *                      --judges gpt-4o,claude-sonnet \
- *                      [--provider mock|openai|anthropic] \
- *                      [--judge-provider mock|openai|anthropic] \
- *                      [--dataset-source redteam|prod|compliance] \
- *                      [--dataset <frozen-dataset.json>] \
- *                      [--baseline <ref>] [--threshold <n>] [--report <p>]
- *   gatelane freeze-slice --window 7d --output dataset.jsonl \
- *                      --endpoint http://localhost:8787 [--token <capture-token>]
- *   gatelane --help
- *
- * Providers:
- *   mock      — deterministic in-process caller (default, no env needed)
- *   openai    — OpenAI Chat Completions (+ any OpenAI-compatible endpoint)
- *   anthropic — Anthropic Messages API
- *
- * Env:
- *   OPENAI_API_KEY / OPENAI_BASE_URL     (provider=openai; BASE_URL enables
- *                                        DeepSeek / Ollama / vLLM / OpenRouter…)
- *   ANTHROPIC_API_KEY / ANTHROPIC_BASE_URL
- *   GATELANE_ENDPOINT / GATELANE_CAPTURE_TOKEN   (freeze-slice defaults)
+ * Config-first: put a gatelane.config.yaml in your project root,
+ * then just `npx gatelane gate`. CLI flags override config values.
  *
  * @see docs/distribution.md
  */
-import { readFile, writeFile } from 'node:fs/promises';
+import { config as loadDotenv } from 'dotenv';
+import { readFile, writeFile, access, mkdir } from 'node:fs/promises';
+import { resolve, join } from 'node:path';
+import { parse as parseYaml } from 'yaml';
+import { z } from 'zod';
 
 import {
   freezeDataset,
@@ -44,37 +26,150 @@ import {
   MockLLMCaller,
   OpenAIChatCaller,
   AnthropicCaller,
+  GoogleCaller,
+  parseProviderModel,
+  PROVIDER_REGISTRY,
+  PROVIDER_PRICING,
   type LLMCaller,
 } from '@lanefoundry/gatelane-engine';
+
+const SUPPORTED_PROVIDERS = ['mock', ...Object.keys(PROVIDER_REGISTRY)].join('|');
 
 const HELP = `gatelane — promotion gate for AI agents
 
 Usage:
-  gatelane gate --candidate <ref> [--candidate <ref> ...] --judges <list>
-                [--provider mock|openai|anthropic]
-                [--judge-provider mock|openai|anthropic]
-                [--dataset-source redteam|prod|compliance]
-                [--dataset <frozen-dataset.json>]
-                [--baseline <ref>]
-                [--threshold <n>]
-                [--signing-key <key>]
-                [--report <path>]
-  gatelane freeze-slice --window <7d|24h|30d> --output <path>
-                [--endpoint <worker-url>] [--token <capture-token>]
+  gatelane gate [options]             Run gate (reads gatelane.config.yaml by default)
+  gatelane freeze-slice [options]     Freeze a production traffic slice
+  gatelane init                       Create a starter gatelane.config.yaml
   gatelane --help
 
-v0.1.0 — real engine (replay → judge → compare → sign → evaluate).
+Config file (gatelane.config.yaml):
+  candidates:
+    - groq:llama-3.1-70b-versatile
+    - openai:gpt-4o
+    - google:gemini-2.5-flash
+  judges:
+    - anthropic:claude-3-5-sonnet
+  dataset: my-dataset.json
+  threshold: 0.02
+
+  Put API keys in .env (auto-loaded). CLI flags override config values.
+
+Gate options:
+  --candidate <ref>       Add candidate (provider:model format)
+  --judges <list>         Comma-separated judge models
+  --dataset <path>        Frozen dataset JSON file
+  --dataset-source <src>  redteam|prod|compliance (default: redteam)
+  --provider <name>       Default provider for candidates without prefix
+  --judge-provider <name> Default provider for judges
+  --threshold <n>         Min delta for promotion (default: 0.02)
+  --baseline <ref>        Baseline candidate ref
+  --report <path>         Write report JSON to file
+  --format <fmt>          Output format: json (default) | table
+  --dry-run               Show what would run without calling APIs
+  --config <path>         Config file path (default: gatelane.config.yaml)
+  --env-file <path>       Env file path (default: .env)
+
+Freeze-slice options:
+  --window <7d|24h|30d>   Time window (default: 7d)
+  --output <path>         Output dataset file (required)
+  --endpoint <url>        Worker endpoint URL
+  --token <token>         Capture API token
+
+Providers: ${SUPPORTED_PROVIDERS}
+
+v0.3.0 — config-first multi-provider.
 `;
 
-/**
- * Parsed CLI args.
- *
- * - `single` records a key → first value seen.
- * - `multi` records a key → every value seen in order (for repeated flags).
- *
- * Both are `Record<string, string | undefined>` rather than `Map` because keys
- * are static CLI flags known at author time, not runtime-inserted.
- */
+// ── Config schema (zod) ──────────────────────────────────────────────
+
+const VALID_PROVIDERS = new Set(['mock', ...Object.keys(PROVIDER_REGISTRY)]);
+
+const configSchema = z.object({
+  candidates: z.array(z.string()).optional(),
+  judges: z.array(z.string()).optional(),
+  dataset: z.string().optional(),
+  dataset_source: z.enum(['redteam', 'prod', 'compliance']).optional(),
+  provider: z.string().optional(),
+  judge_provider: z.string().optional(),
+  threshold: z.number().min(0).max(1).optional(),
+  baseline: z.string().optional(),
+  report: z.string().optional(),
+  signing_key: z.string().optional(),
+  format: z.enum(['json', 'table']).optional(),
+}).strict();
+
+type GatelaneConfig = z.infer<typeof configSchema>;
+
+// ── Config file loading ──────────────────────────────────────────────
+
+const CONFIG_FILES = [
+  'gatelane.config.yaml',
+  'gatelane.config.yml',
+  'gatelane.config.json',
+];
+
+async function loadConfig(explicitPath?: string): Promise<GatelaneConfig> {
+  let raw: string;
+  let filePath: string;
+
+  if (explicitPath) {
+    filePath = resolve(explicitPath);
+    raw = await readFile(filePath, 'utf-8');
+  } else {
+    let found = false;
+    filePath = '';
+    raw = '';
+    for (const name of CONFIG_FILES) {
+      const p = resolve(name);
+      try {
+        await access(p);
+      } catch {
+        continue;
+      }
+      filePath = p;
+      raw = await readFile(p, 'utf-8');
+      process.stderr.write(`  config: ${name}\n`);
+      found = true;
+      break;
+    }
+    if (!found) return {};
+  }
+
+  const parsed = filePath.endsWith('.json')
+    ? JSON.parse(raw) as unknown
+    : parseYaml(raw) as unknown;
+
+  if (parsed === null || parsed === undefined) return {};
+
+  const result = configSchema.safeParse(parsed);
+  if (!result.success) {
+    const issues = result.error.issues.map((issue) => {
+      if (issue.code === 'unrecognized_keys') {
+        const keys = (issue as { keys: string[] }).keys;
+        return `  unknown field: "${keys.join('", "')}" — check for typos`;
+      }
+      return `  ${issue.path.join('.')}: ${issue.message}`;
+    });
+    process.stderr.write(`config error in ${filePath}:\n${issues.join('\n')}\n`);
+    process.exit(2);
+  }
+
+  // Validate provider names in candidates/judges
+  for (const ref of result.data.candidates ?? []) {
+    const { provider } = parseProviderModel(ref, 'mock');
+    if (!VALID_PROVIDERS.has(provider)) {
+      process.stderr.write(`config error: unknown provider "${provider}" in candidate "${ref}"\n`);
+      process.stderr.write(`  valid providers: ${SUPPORTED_PROVIDERS}\n`);
+      process.exit(2);
+    }
+  }
+
+  return result.data;
+}
+
+// ── Arg parser ───────────────────────────────────────────────────────
+
 type ParsedArgs = {
   positional: ReadonlyArray<string>;
   single: Record<string, string | boolean>;
@@ -109,56 +204,85 @@ function parseArgs(argv: ReadonlyArray<string>): ParsedArgs {
   return { positional, single, multi };
 }
 
-/** Normalize a provider name from --provider / --judge-provider. */
 function resolveProvider(s: string | undefined): string {
   return (s ?? 'mock').toLowerCase();
 }
 
-/**
- * Build an LLMCaller for the given provider.
- *
- * - `mock`      → deterministic in-process caller (no env needed)
- * - `openai`    → OpenAI Chat Completions; `OPENAI_BASE_URL` pins any
- *                 OpenAI-compatible endpoint (DeepSeek, Ollama, vLLM, OpenRouter…)
- * - `anthropic` → Anthropic Messages API
- *
- * Missing API key for a real provider is a hard error — a user who asked for
- * real calls must not silently get mock responses.
- */
+// ── Provider factory ─────────────────────────────────────────────────
+
 function makeCaller(provider: string, defaultModel: string): LLMCaller {
-  switch (provider) {
-    case 'openai': {
-      const apiKey = process.env.OPENAI_API_KEY;
-      if (!apiKey) {
-        throw new Error(
-          '--provider openai requires OPENAI_API_KEY (add OPENAI_BASE_URL for OpenAI-compatible endpoints)',
-        );
-      }
-      return new OpenAIChatCaller({
-        apiKey,
-        ...(process.env.OPENAI_BASE_URL !== undefined ? { baseURL: process.env.OPENAI_BASE_URL } : {}),
-        defaultModel,
-      });
+  if (provider === 'mock') {
+    return new MockLLMCaller({ quality: 0.9 });
+  }
+
+  const reg = PROVIDER_REGISTRY[provider];
+  if (!reg) {
+    throw new Error(`unknown provider: ${provider} (expected ${SUPPORTED_PROVIDERS})`);
+  }
+
+  const apiKey = process.env[reg.envKey] ?? (reg.keyOptional ? 'ollama' : undefined);
+  if (!apiKey) {
+    throw new Error(`provider "${provider}" requires ${reg.envKey} in .env or environment`);
+  }
+
+  if (provider === 'anthropic') {
+    return new AnthropicCaller({
+      apiKey,
+      ...(reg.envBaseURL && process.env[reg.envBaseURL] ? { baseURL: process.env[reg.envBaseURL] } : {}),
+      defaultModel: defaultModel || reg.defaultModel,
+    });
+  }
+
+  if (provider === 'google') {
+    return new GoogleCaller({
+      apiKey,
+      defaultModel: defaultModel || reg.defaultModel,
+    });
+  }
+
+  let baseURL = reg.baseURL;
+  if (reg.envBaseURL && process.env[reg.envBaseURL]) {
+    baseURL = process.env[reg.envBaseURL]!;
+  }
+
+  if (provider === 'cloudflare') {
+    const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+    if (!accountId) {
+      throw new Error('provider "cloudflare" requires CLOUDFLARE_ACCOUNT_ID in .env or environment');
     }
-    case 'anthropic': {
-      const apiKey = process.env.ANTHROPIC_API_KEY;
-      if (!apiKey) {
-        throw new Error('--provider anthropic requires ANTHROPIC_API_KEY');
-      }
-      return new AnthropicCaller({
-        apiKey,
-        ...(process.env.ANTHROPIC_BASE_URL !== undefined ? { baseURL: process.env.ANTHROPIC_BASE_URL } : {}),
-        defaultModel,
-      });
-    }
-    case 'mock':
-      return new MockLLMCaller({ quality: 0.9 });
-    default:
-      throw new Error(`unknown provider: ${provider} (expected mock|openai|anthropic)`);
+    baseURL = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai`;
+  }
+
+  return new OpenAIChatCaller({
+    apiKey,
+    baseURL,
+    defaultModel: defaultModel || reg.defaultModel,
+    provider,
+    pricing: PROVIDER_PRICING[provider] ?? {},
+  });
+}
+
+// ── Table formatter ──────────────────────────────────────────────────
+
+function printTable(
+  headers: string[],
+  rows: string[][],
+): void {
+  const widths = headers.map((h, i) =>
+    Math.max(h.length, ...rows.map((r) => (r[i] ?? '').length)),
+  );
+  const sep = widths.map((w) => '─'.repeat(w + 2)).join('┼');
+  const fmt = (row: string[]) =>
+    row.map((cell, i) => ` ${cell.padEnd(widths[i]!)} `).join('│');
+
+  process.stderr.write(`${fmt(headers)}\n${'─'.repeat(sep.length + 1)}\n`);
+  for (const row of rows) {
+    process.stderr.write(`${fmt(row)}\n`);
   }
 }
 
-/** Parse a time window like "7d"/"24h"/"30d" into a `since` ISO timestamp. */
+// ── Commands ─────────────────────────────────────────────────────────
+
 function sinceFromWindow(window: string): string {
   const m = /^(\d+)([dh])$/.exec(window);
   if (!m) throw new Error(`invalid --window: ${window} (expected e.g. 7d, 24h, 30d)`);
@@ -167,33 +291,107 @@ function sinceFromWindow(window: string): string {
   return new Date(Date.now() - ms).toISOString();
 }
 
+const CONCURRENCY_LIMIT = 5;
+
+async function runParallel<T>(
+  tasks: Array<() => Promise<T>>,
+  concurrency: number,
+): Promise<T[]> {
+  const results: T[] = [];
+  const executing = new Set<Promise<void>>();
+  for (const task of tasks) {
+    const p = task().then((result) => { results.push(result); });
+    executing.add(p);
+    p.finally(() => executing.delete(p));
+    if (executing.size >= concurrency) {
+      await Promise.race(executing);
+    }
+  }
+  await Promise.all(executing);
+  return results;
+}
+
 async function cmdGate(argv: ReadonlyArray<string>): Promise<number> {
-  const { multi } = parseArgs(argv);
-  const candidates = multi['candidate'] ?? [];
-  const judges = (multi['judges']?.[0] ?? '')
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
-  const datasetSource = (multi['dataset-source']?.[0] ?? 'redteam') as DatasetSourceKind;
-  const datasetPath = multi['dataset']?.[0];
-  const baseline = multi['baseline']?.[0];
-  const threshold = Number(multi['threshold']?.[0] ?? '0.02');
-  const reportPath = multi['report']?.[0];
-  const provider = resolveProvider(multi['provider']?.[0]);
-  const judgeProvider = resolveProvider(multi['judge-provider']?.[0] ?? multi['provider']?.[0]);
+  const { multi, single } = parseArgs(argv);
+  const config = await loadConfig(multi['config']?.[0]);
+
+  const dryRun = single['dry-run'] === true;
+  const format = (multi['format']?.[0] ?? config.format ?? 'json') as 'json' | 'table';
+
+  const candidates = multi['candidate']?.length
+    ? multi['candidate']
+    : config.candidates ?? [];
+
+  const judgesRaw = multi['judges']?.[0];
+  const judges = judgesRaw
+    ? judgesRaw.split(',').map((s) => s.trim()).filter(Boolean)
+    : config.judges ?? [];
+
+  const datasetSource = (multi['dataset-source']?.[0] ?? config.dataset_source ?? 'redteam') as DatasetSourceKind;
+  const datasetPath = multi['dataset']?.[0] ?? config.dataset;
+  const baseline = multi['baseline']?.[0] ?? config.baseline;
+  const threshold = Number(multi['threshold']?.[0] ?? config.threshold ?? 0.02);
+  const reportPath = multi['report']?.[0] ?? config.report;
+  const defaultProvider = resolveProvider(multi['provider']?.[0] ?? config.provider);
+  const judgeProvider = resolveProvider(multi['judge-provider']?.[0] ?? config.judge_provider ?? multi['provider']?.[0] ?? config.provider);
   const signingKey =
     multi['signing-key']?.[0] ??
+    config.signing_key ??
     process.env.GATELANE_SIGNING_KEY ??
     'dev-only-insecure-signing-key';
 
   if (candidates.length === 0 || judges.length === 0) {
-    process.stderr.write('error: --candidate and --judges are required\n');
+    process.stderr.write(
+      'error: candidates and judges are required.\n' +
+      '       Set them in gatelane.config.yaml or pass --candidate / --judges flags.\n' +
+      '       Run `gatelane init` to create a starter config.\n',
+    );
     return 2;
   }
   if (!Number.isFinite(threshold) || threshold < 0 || threshold > 1) {
-    process.stderr.write(`error: --threshold must be 0..1, got ${threshold}\n`);
+    process.stderr.write(`error: threshold must be 0..1, got ${threshold}\n`);
     return 2;
   }
+
+  // Print run summary
+  process.stderr.write(`\n  candidates: ${candidates.join(', ')}\n`);
+  process.stderr.write(`  judges:     ${judges.join(', ')}\n`);
+  process.stderr.write(`  threshold:  ${threshold}\n`);
+  if (datasetPath) process.stderr.write(`  dataset:    ${datasetPath}\n`);
+  else process.stderr.write(`  dataset:    ${datasetSource} (generated)\n`);
+  process.stderr.write(`  format:     ${format}\n`);
+
+  // Dry run — validate config + env vars, then exit
+  if (dryRun) {
+    process.stderr.write('\n  [dry-run] validating providers...\n');
+    const errors: string[] = [];
+    for (const ref of [...candidates, ...judges]) {
+      const { provider, model } = parseProviderModel(ref, defaultProvider);
+      if (provider === 'mock') continue;
+      const reg = PROVIDER_REGISTRY[provider];
+      if (!reg) {
+        errors.push(`  ✗ ${ref}: unknown provider "${provider}"`);
+        continue;
+      }
+      const hasKey = !!process.env[reg.envKey] || reg.keyOptional;
+      if (hasKey) {
+        process.stderr.write(`  ✓ ${ref} — ${reg.envKey} found\n`);
+      } else {
+        errors.push(`  ✗ ${ref}: missing ${reg.envKey}`);
+      }
+      if (provider === 'cloudflare' && !process.env.CLOUDFLARE_ACCOUNT_ID) {
+        errors.push(`  ✗ ${ref}: missing CLOUDFLARE_ACCOUNT_ID`);
+      }
+    }
+    if (errors.length > 0) {
+      process.stderr.write('\n  errors:\n' + errors.join('\n') + '\n');
+      return 1;
+    }
+    process.stderr.write('\n  [dry-run] all providers valid. Ready to run.\n');
+    return 0;
+  }
+
+  process.stderr.write('\n');
 
   let dataset: FrozenDataset;
   if (datasetPath !== undefined) {
@@ -208,17 +406,26 @@ async function cmdGate(argv: ReadonlyArray<string>): Promise<number> {
     });
   }
 
-  // Candidate caller drives the replay; per-judge callers drive judging.
-  const candidateCaller = makeCaller(provider, candidates[0]?.replace(/^model:/, '') ?? '');
+  // Build callers — candidates run in parallel
+  const candidateCallers: Record<string, LLMCaller> = {};
+  for (const ref of candidates) {
+    const { provider, model } = parseProviderModel(ref, defaultProvider);
+    candidateCallers[ref] = makeCaller(provider, model);
+  }
+
+  const firstCandidateCaller = candidateCallers[candidates[0]!]!;
+
   const judgeCallers: Record<string, LLMCaller> = {};
   for (const judgeRef of judges) {
-    judgeCallers[judgeRef] = makeCaller(judgeProvider, judgeRef);
+    const { provider, model } = parseProviderModel(judgeRef, judgeProvider);
+    judgeCallers[judgeRef] = makeCaller(provider, model);
   }
 
   const runner = createRunner({
-    caller: candidateCaller,
+    caller: firstCandidateCaller,
     judge_callers: judgeCallers,
     signing_key: signingKey,
+    concurrency: CONCURRENCY_LIMIT,
     messages_from_item: (item) => {
       const input = item.input;
       if (Array.isArray(input)) {
@@ -248,20 +455,102 @@ async function cmdGate(argv: ReadonlyArray<string>): Promise<number> {
         approval_required: false,
       },
     });
-    const summary = {
+
+    const metrics = result.candidate_metrics ?? {};
+    const decisionAction = typeof result.decision === 'object' && result.decision !== null
+      ? (result.decision as { action: string }).action
+      : String(result.decision);
+    const decisionWinner = typeof result.decision === 'object' && result.decision !== null && 'winner' in result.decision
+      ? String((result.decision as { winner: string }).winner)
+      : undefined;
+    const decisionReason = typeof result.decision === 'object' && result.decision !== null && 'reason' in result.decision
+      ? String((result.decision as { reason: string }).reason)
+      : undefined;
+
+    // Table output to stderr (always show if format=table)
+    if (format === 'table') {
+      const tableRows = candidates.map((ref) => {
+        const m = metrics[ref];
+        const isWinner = decisionWinner === ref;
+        return [
+          ref,
+          m ? m.mean_score.toFixed(2) : '-',
+          m ? `${(m.pass_rate * 100).toFixed(0)}%` : '-',
+          m ? `$${m.total_cost_usd.toFixed(4)}` : '-',
+          m ? `${m.mean_latency_ms.toFixed(0)}ms` : '-',
+          m ? String(m.n_items) : '-',
+          isWinner ? `✓ ${decisionAction}` : '-',
+        ];
+      });
+      process.stderr.write('\n');
+      printTable(['Candidate', 'Score', 'Pass Rate', 'Cost', 'Latency', 'Items', 'Decision'], tableRows);
+      process.stderr.write(`\n  gate: ${decisionAction}`);
+      if (decisionWinner) process.stderr.write(` → ${decisionWinner}`);
+      if (decisionReason) process.stderr.write(` (${decisionReason})`);
+      process.stderr.write('\n\n');
+    }
+
+    // Full report object
+    const fullReport = {
       gate_run_id: result.report.gate_run_id,
       report_id: result.report.id,
       decision: result.decision,
+      timestamp: result.report.timestamp,
       candidate_shas: result.report.candidate_shas,
       judge_shas: result.report.judge_shas,
       signature: result.report.signature,
-      timestamp: result.report.timestamp,
+      candidate_metrics: Object.fromEntries(
+        Object.entries(metrics).map(([ref, m]) => [ref, {
+          mean_score: m.mean_score,
+          pass_rate: m.pass_rate,
+          n_items: m.n_items,
+          total_cost_usd: m.total_cost_usd,
+          mean_latency_ms: m.mean_latency_ms,
+          aggregate_delta: m.aggregate_delta,
+          cost_delta: m.cost_delta,
+          latency_delta: m.latency_delta,
+        }]),
+      ),
+      verdicts: (result.verdicts ?? []).map((v) => ({
+        candidate_ref: v.candidate_ref,
+        judge_ref: v.judge_ref,
+        item_id: v.item_id,
+        outcome: v.outcome,
+        score: v.score,
+        reasoning: v.reasoning,
+      })),
+      replay_rows: (result.replay_rows ?? []).map((r) => ({
+        item_id: r.item_id,
+        candidate_ref: r.candidate_ref,
+        content: r.response.content.length > 500
+          ? r.response.content.slice(0, 500) + '…'
+          : r.response.content,
+        cost_usd: r.response.cost_usd,
+        latency_ms: r.response.latency_ms,
+        tokens_in: r.response.tokens_in,
+        tokens_out: r.response.tokens_out,
+      })),
+      policy: result.report.policy,
     };
-    const json = JSON.stringify(summary, null, 2);
+
+    const json = JSON.stringify(fullReport, null, 2);
+
+    // Save report to file
     if (reportPath !== undefined) {
       await writeFile(reportPath, json, 'utf-8');
-      process.stdout.write(`report written to ${reportPath}\n`);
-    } else {
+      process.stderr.write(`  report: ${reportPath}\n`);
+    }
+
+    // Always save traces to .gatelane/traces/YYYY-MM-DD/<run-id>.json
+    const today = new Date().toISOString().slice(0, 10);
+    const traceDir = resolve('.gatelane', 'traces', today);
+    await mkdir(traceDir, { recursive: true });
+    const tracePath = join(traceDir, `${result.report.gate_run_id}.json`);
+    await writeFile(tracePath, json, 'utf-8');
+    process.stderr.write(`  traces: ${tracePath}\n`);
+
+    // JSON summary to stdout (machine-readable)
+    if (!reportPath) {
       process.stdout.write(json + '\n');
     }
     return 0;
@@ -284,7 +573,7 @@ async function cmdFreezeSlice(argv: ReadonlyArray<string>): Promise<number> {
   if (!endpoint || !token) {
     process.stderr.write(
       'error: freeze-slice needs a Worker endpoint. Pass --endpoint <url> --token <capture-token>\n' +
-        '       or set GATELANE_ENDPOINT / GATELANE_CAPTURE_TOKEN env.\n',
+        '       or set GATELANE_ENDPOINT / GATELANE_CAPTURE_TOKEN in .env.\n',
     );
     return 2;
   }
@@ -293,7 +582,6 @@ async function cmdFreezeSlice(argv: ReadonlyArray<string>): Promise<number> {
   const storage = new HttpStorage({ endpoint, token });
   const captures = await storage.list({ since, limit: 1000 });
 
-  // One user prompt → one dataset item. Multi-message prompts serialize as-is.
   const items = captures.map((c) => ({
     id: c.id,
     input: c.input.prompt.length === 1
@@ -311,7 +599,55 @@ async function cmdFreezeSlice(argv: ReadonlyArray<string>): Promise<number> {
   return 0;
 }
 
+async function cmdInit(): Promise<number> {
+  const configPath = resolve('gatelane.config.yaml');
+  try {
+    await access(configPath);
+    process.stderr.write('gatelane.config.yaml already exists. Delete it first to re-init.\n');
+    return 1;
+  } catch {
+    // File doesn't exist, good
+  }
+
+  const starter = `# gatelane config — edit candidates/judges, put API keys in .env
+# Docs: https://github.com/lanefoundry/gatelane
+
+candidates:
+  - openai:gpt-4o-mini
+  # - anthropic:claude-3-5-haiku
+  # - groq:llama-3.1-70b-versatile
+  # - google:gemini-2.5-flash
+  # - openrouter:mistralai/mistral-large-latest
+  # - cloudflare:@cf/meta/llama-3.1-8b-instruct
+  # - ollama:llama3.1
+
+judges:
+  - openai:gpt-4o
+
+# dataset: my-dataset.json      # frozen dataset file
+# dataset_source: redteam       # or: prod, compliance
+threshold: 0.02
+# baseline: openai:gpt-4o-mini  # compare against this candidate
+# report: report.json           # write report to file
+# format: table                 # or: json (default)
+`;
+
+  await writeFile(configPath, starter, 'utf-8');
+  process.stdout.write('Created gatelane.config.yaml\n');
+  process.stdout.write('Next: add your API keys to .env, then run `npx gatelane gate`\n');
+  return 0;
+}
+
+// ── Main ─────────────────────────────────────────────────────────────
+
 async function main(argv: ReadonlyArray<string>): Promise<number> {
+  const envFileIdx = argv.indexOf('--env-file');
+  if (envFileIdx !== -1 && argv[envFileIdx + 1]) {
+    loadDotenv({ path: resolve(argv[envFileIdx + 1]) });
+  } else {
+    loadDotenv();
+  }
+
   const command = argv[0];
   if (command === undefined || command === '--help' || command === '-h') {
     process.stdout.write(HELP);
@@ -319,6 +655,7 @@ async function main(argv: ReadonlyArray<string>): Promise<number> {
   }
   if (command === 'gate') return cmdGate(argv.slice(1));
   if (command === 'freeze-slice') return cmdFreezeSlice(argv.slice(1));
+  if (command === 'init') return cmdInit();
   process.stderr.write(`unknown command: ${command}\n`);
   return 2;
 }

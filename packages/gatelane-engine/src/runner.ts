@@ -51,6 +51,8 @@ export type RunnerOptions = {
   audit_db?: D1DatabaseLike;
   /** Service name for OTel tracing. */
   tracing_service_name?: string;
+  /** Max concurrent LLM calls during judge stage (default: 5). */
+  concurrency?: number;
 };
 
 export function createRunner(opts: RunnerOptions): GateRunner {
@@ -113,9 +115,12 @@ export function createRunner(opts: RunnerOptions): GateRunner {
       }, opts.signing_key, opts.audit_db);
     }
 
-    // Stage 2: Judge
+    // Stage 2: Judge (parallel with concurrency limit)
+    const concurrency = opts.concurrency ?? 5;
     const verdicts: JudgeVerdict[] = [];
     await withGateSpan('judge', runId, async (span) => {
+      type JudgeTask = () => Promise<JudgeVerdict>;
+      const tasks: JudgeTask[] = [];
       for (const cand of candidates) {
         for (const judgeRef of args.judges) {
           const judgeCaller = opts.judge_callers?.[judgeRef] ?? opts.caller;
@@ -124,16 +129,28 @@ export function createRunner(opts: RunnerOptions): GateRunner {
           for (const row of candRows) {
             const itemId = row.item_id;
             const itemInput = args.dataset.items?.find((it) => (it.id ?? '<anonymous>') === itemId)?.input;
-            const v = await judge.judge({
+            tasks.push(() => judge.judge({
               candidate_ref: cand.ref,
               item_id: itemId,
               item_input: itemInput ?? null,
               candidate_output: row.response.content,
-            });
-            verdicts.push(v);
+            }));
           }
         }
       }
+
+      // Run with concurrency limiter
+      const executing = new Set<Promise<void>>();
+      for (const task of tasks) {
+        const p = task().then((v) => { verdicts.push(v); });
+        executing.add(p);
+        p.finally(() => executing.delete(p));
+        if (executing.size >= concurrency) {
+          await Promise.race(executing);
+        }
+      }
+      await Promise.all(executing);
+
       span.setAttribute('judge.verdicts_count', verdicts.length);
       span.setAttribute('judge.judges', args.judges.join(','));
       span.setAttribute('judge.candidates', args.candidates.join(','));
@@ -275,7 +292,24 @@ export function createRunner(opts: RunnerOptions): GateRunner {
       }, opts.signing_key, opts.audit_db);
     }
 
-    return { report: signed, decision };
+    return {
+      report: signed,
+      decision,
+      replay_rows: replayResult.rows.map((r) => ({
+        item_id: r.item_id,
+        candidate_ref: r.candidate_ref,
+        response: {
+          content: r.response.content,
+          cost_usd: r.response.cost_usd,
+          latency_ms: r.response.latency_ms,
+          tokens_in: r.response.tokens_in,
+          tokens_out: r.response.tokens_out,
+          finish_reason: r.response.finish_reason,
+        },
+      })),
+      verdicts,
+      candidate_metrics: perCandidate,
+    };
   };
 }
 

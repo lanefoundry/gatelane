@@ -107,7 +107,19 @@ gatelane is **one primitive the rest of the market does not ship**: promotion-on
 
 - Node.js 22+, pnpm 10, Git
 - A Cloudflare account (for production deployment)
-- An LLM API key for the eval / backtest judge model (OpenAI, Anthropic, Gemini, or self-hosted)
+- An LLM API key for the eval / backtest judge model
+
+### Supported providers
+
+| Provider | Env var | API |
+|---|---|---|
+| OpenAI | `OPENAI_API_KEY` | Chat Completions (+ any OpenAI-compatible via `OPENAI_BASE_URL`) |
+| Anthropic | `ANTHROPIC_API_KEY` | Messages API |
+| Google | `GOOGLE_API_KEY` | Gemini generateContent |
+| Groq | `GROQ_API_KEY` | OpenAI-compatible (fast inference) |
+| OpenRouter | `OPENROUTER_API_KEY` | OpenAI-compatible (multi-model gateway) |
+| Cloudflare Workers AI | `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` | OpenAI-compatible |
+| Mock | — | Deterministic, no API key needed |
 
 ### Install
 
@@ -118,19 +130,41 @@ pnpm install
 cp .env.example .env
 ```
 
-Set the required secrets in `.env`:
+Set your API keys in `.env` (auto-loaded by the CLI, no `export` needed):
 
 ```bash
-# LLM judge for backtest scoring (pick one)
-GATELANE_JUDGE_PROVIDER=openai
-GATELANE_JUDGE_API_KEY=sk-...
-GATELANE_JUDGE_MODEL=gpt-4o
-
-# Capture API authentication (≥ 32 random chars)
+# .env — add to .gitignore
+OPENAI_API_KEY=sk-...
+GROQ_API_KEY=gsk_...
+GOOGLE_API_KEY=AIza...
 GATELANE_CAPTURE_TOKEN=$(openssl rand -hex 32)
 ```
 
-Start the local dev server:
+Create a config file (or run `npx gatelane init`):
+
+```yaml
+# gatelane.config.yaml
+candidates:
+  - openai:gpt-4o
+  - groq:llama-3.1-70b-versatile
+  - google:gemini-2.5-flash
+
+judges:
+  - openai:gpt-4o
+
+dataset: my-dataset.json
+threshold: 0.02
+```
+
+Run the gate:
+
+```bash
+npx gatelane gate
+```
+
+That's it. No flags needed — the config file is the experiment spec. CLI flags override config values when you need a one-off change.
+
+Start the local dev server (for capture endpoint):
 
 ```bash
 pnpm dev
@@ -190,7 +224,27 @@ const report = generateReport(results, ["http://localhost:3000/agent"]);
 
 ### Freeze a production slice and backtest
 
-Programmatic API (CLI wrapper planned for v0.2):
+#### CLI (recommended)
+
+```bash
+# Freeze a 7-day production slice
+npx gatelane freeze-slice --window 7d --output dataset.json \
+  --endpoint http://localhost:8787 --token $GATELANE_CAPTURE_TOKEN
+
+# Run the gate — reads candidates/judges/dataset from gatelane.config.yaml
+npx gatelane gate
+```
+
+Or override the config for a one-off run:
+
+```bash
+npx gatelane gate --candidate openai:gpt-4o --candidate groq:llama-3.1-70b-versatile \
+  --judges anthropic:claude-3-5-sonnet --dataset dataset.json
+```
+
+API keys are read from `.env` automatically. Use `--env-file` to load from a custom path.
+
+#### Programmatic API
 
 ```typescript
 import { backtest } from "@gatelane/mode-backtest";

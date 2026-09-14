@@ -58,6 +58,38 @@
       ".": {
         "types": "./dist/index.d.ts",
         "import": "./dist/index.js"
+      },
+      "./gate": {
+        "types": "./dist/gate.d.ts",
+        "import": "./dist/gate.js"
+      },
+      "./dataset": {
+        "types": "./dist/dataset.d.ts",
+        "import": "./dist/dataset.js"
+      },
+      "./candidate": {
+        "types": "./dist/candidate.d.ts",
+        "import": "./dist/candidate.js"
+      },
+      "./promotion": {
+        "types": "./dist/promotion.d.ts",
+        "import": "./dist/promotion.js"
+      },
+      "./capture": {
+        "types": "./dist/capture.d.ts",
+        "import": "./dist/capture.js"
+      },
+      "./storage": {
+        "types": "./dist/storage.d.ts",
+        "import": "./dist/storage.js"
+      },
+      "./storage-fs": {
+        "types": "./dist/storage-fs.d.ts",
+        "import": "./dist/storage-fs.js"
+      },
+      "./storage-http": {
+        "types": "./dist/storage-http.d.ts",
+        "import": "./dist/storage-http.js"
       }
     }
   },
