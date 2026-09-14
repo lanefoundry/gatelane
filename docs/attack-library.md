@@ -1,15 +1,15 @@
 # gatelane attack library
 
 > v0.1 (2026-09-03)
-> Reference for Mode A red team attack vectors.
-> Implements the `AttackVector` / `AttackResult` / `AttackReport` types in `packages/mode-red-team/src/types.ts`.
+> Reference for security scan (`gatelane scan`) attack vectors.
+> Implements the `AttackVector` / `AttackResult` / `AttackReport` types in `packages/gatelane-engine/src/attack.ts`.
 
 ## Overview
 
-gatelane Mode A runs 50+ prompt injection and abuse attacks against coding agents. The attack library is organized into six categories, each implemented as a module under `packages/mode-red-team/src/attack-library/`:
+gatelane's security scan runs 50+ prompt injection and abuse attacks against coding agents. The attack library is organized into six categories, each implemented as a module under `packages/gatelane-engine/src/`:
 
 ```text
-packages/mode-red-team/src/attack-library/
+packages/gatelane-engine/src/
   direct-prompt-injection.ts    — category 1
   indirect-via-tool.ts          — category 2
   chain-attack.ts               — category 3
@@ -220,7 +220,7 @@ Coding agents use structured tool calls to interact with external services. The 
 
 ## Integration with external frameworks
 
-gatelane does not reimplement attack generation from scratch. Instead, it wraps three established red team frameworks through orchestrator modules in `packages/mode-red-team/src/orchestrators/`. Each orchestrator translates the external framework's output into gatelane's `AttackVector` and `AttackResult` types.
+gatelane does not reimplement attack generation from scratch. Instead, it wraps three established red team frameworks through orchestrator modules in `packages/gatelane-engine/src/`. Each orchestrator translates the external framework's output into gatelane's `AttackVector` and `AttackResult` types.
 
 ### garak (NVIDIA)
 
@@ -379,9 +379,9 @@ The `AttackReport` aggregates results:
 
 ## References
 
-- `packages/mode-red-team/src/types.ts` -- `AttackVector`, `AttackResult`, `AttackReport` type definitions
+- `packages/gatelane-engine/src/attack.ts` -- `AttackVector`, `AttackResult`, `AttackReport` type definitions
 - `docs/positioning.md` -- threat model scope and competitive positioning
-- `docs/roadmap.md` -- Mode A deliverables and acceptance criteria
+- `docs/roadmap.md` -- scan deliverables and acceptance criteria
 - [OWASP Top 10 for Agentic Applications](https://owasp.org/www-project-agentic-ai-threats/)
 - [OWASP LLM Top 10](https://owasp.org/www-project-top-10-for-large-language-model-applications/)
 - [MITRE ATLAS](https://atlas.mitre.org/)

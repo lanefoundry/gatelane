@@ -202,7 +202,7 @@ function exportCsv(
   }
 
   // Add a summary row for the overall decision
-  if (decision.action === 'promote' && 'winner' in decision) {
+  if (decision.action === 'pass' && 'winner' in decision) {
     const winnerMetric = candidate_metrics[decision.winner];
     if (winnerMetric) {
       const summaryRow = [
@@ -398,7 +398,7 @@ export function exportSummary(report: PromotionReport, decision: PromotionDecisi
     `Dataset: ${report.dataset_content_hash} (v${report.dataset_version})`,
     `Timestamp: ${report.timestamp}`,
     `Decision: ${decision.action.toUpperCase()}`,
-    ...(decision.action === 'promote' && 'winner' in decision ? [`Winner: ${decision.winner}`] : []),
+    ...(decision.action === 'pass' && 'winner' in decision ? [`Winner: ${decision.winner}`] : []),
     `Reason: ${decision.reason}`,
     `Approver: ${report.approver ?? 'N/A'}`,
     `Signature: ${report.signature.slice(0, 16)}...`,

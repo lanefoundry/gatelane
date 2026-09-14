@@ -40,9 +40,9 @@ export default defineConfig({
         import.meta.dirname,
         '../gatelane-engine/src/attack.ts',
       ),
-      '@lanefoundry/gatelane-engine/redteam': resolve(
+      '@lanefoundry/gatelane-engine/scan': resolve(
         import.meta.dirname,
-        '../gatelane-engine/src/redteam.ts',
+        '../gatelane-engine/src/scan.ts',
       ),
       '@lanefoundry/source-prod-slice': resolve(
         import.meta.dirname,

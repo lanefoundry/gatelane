@@ -10,7 +10,7 @@ import {
   injectionMetaOf,
   buildAttackReport,
   verifyPatchHolds,
-  runRedTeamGate,
+  runScanGate,
   collectVerdicts,
   resolveCandidates,
   enrichVerdicts,
@@ -58,7 +58,7 @@ describe('attack.ts — red-team injection dataset', () => {
 
   it('freezeInjectionDataset returns a proper FrozenDataset', async () => {
     const ds = await freezeInjectionDataset();
-    expect(ds.source_kind).toBe('redteam');
+    expect(ds.source_kind).toBe('scan');
     expect(ds.source_ref).toBe('gatelane-hand-curated@0.0.1');
     expect(ds.items?.length).toBe(20);
     expect(ds.content_hash).toMatch(/^sha256:/);
@@ -84,7 +84,7 @@ describe('attack.ts — red-team injection dataset', () => {
   });
 });
 
-describe('redteam.ts — attack report + patch verify', () => {
+describe('scan.ts — attack report + patch verify', () => {
   it('enrichVerdicts adds category + asi from payload registry', async () => {
     const dataset = await freezeInjectionDataset();
     const verdicts = [
@@ -363,7 +363,7 @@ describe('redteam.ts — attack report + patch verify', () => {
     expect(verdict.regressed).toEqual(['pinj-002']);
   });
 
-  it('collectVerdicts + replay + runRedTeamGate integration', async () => {
+  it('collectVerdicts + replay + runScanGate integration', async () => {
     const dataset = await freezeInjectionDataset();
     const caller = new MockLLMCaller({ quality: 0.9 });
 
@@ -387,7 +387,7 @@ describe('redteam.ts — attack report + patch verify', () => {
     expect(verdicts.length).toBe(20);
 
     // Full red-team gate (without signing)
-    const result = await runRedTeamGate({
+    const result = await runScanGate({
       dataset,
       candidates: ['model:a'],
       judges: ['gpt-4o'],
@@ -402,11 +402,11 @@ describe('redteam.ts — attack report + patch verify', () => {
     expect(result.gateResult).toBeNull(); // no signing_key provided
   });
 
-  it('runRedTeamGate with signing_key returns signed report + decision', async () => {
+  it('runScanGate with signing_key returns signed report + decision', async () => {
     const dataset = await freezeInjectionDataset();
     const caller = new MockLLMCaller({ quality: 0.9 });
 
-    const result = await runRedTeamGate({
+    const result = await runScanGate({
       dataset,
       candidates: ['model:a', 'model:b'],
       judges: ['gpt-4o'],

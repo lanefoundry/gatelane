@@ -15,9 +15,9 @@
       "types": "./dist/attack.d.ts",
       "import": "./dist/attack.js"
     },
-    "./redteam": {
-      "types": "./dist/redteam.d.ts",
-      "import": "./dist/redteam.js"
+    "./scan": {
+      "types": "./dist/scan.d.ts",
+      "import": "./dist/scan.js"
     },
     "./llm": {
       "types": "./dist/llm.d.ts",

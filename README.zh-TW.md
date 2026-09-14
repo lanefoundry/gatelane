@@ -3,19 +3,19 @@
 # gatelane
 
 **AI 代理的預生產安全與評估閘門。**
-紅隊攻擊探測。回測升級閘門。共用引擎。
+安全掃描。品質評估。前後差異比較。一個 CLI。
 
 [![CI](https://github.com/lanefoundry/gatelane/actions/workflows/ci.yml/badge.svg)](https://github.com/lanefoundry/gatelane/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 ![Status](https://img.shields.io/badge/status-early_preview-orange.svg)
 
-[為什麼選 gatelane](#為什麼選-gatelane) · [模式](#模式) · [快速開始](#快速開始) · [部署](#部署到-cloudflare) · [文件](#文件) · [路線圖](docs/roadmap.md)
+[為什麼選 gatelane](#為什麼選-gatelane) · [CLI 指令](#cli-指令) · [快速開始](#快速開始) · [部署](#部署到-cloudflare) · [文件](#文件) · [路線圖](docs/roadmap.md)
 
 [English](README.md) · [繁體中文](README.zh-TW.md)
 
 </div>
 
-gatelane 是 [lanefoundry](https://github.com/lanefoundry) *-lane 家族的第三個產品。它在「發現漏洞」和「驗證修補沒有造成退化」之間建立閉環，透過在同一個捕獲管線和同一個升級原語上執行紅隊攻擊和回測重播。
+gatelane 是 [lanefoundry](https://github.com/lanefoundry) *-lane 家族的第三個產品。它在「發現漏洞」和「驗證修補沒有造成退化」之間建立閉環，透過在同一個捕獲管線和同一個升級原語上執行安全掃描和品質評估。
 
 - [groundlane](https://github.com/lanefoundry/groundlane) — AI 代理的可信內容存取層
 - [looplane](https://github.com/lanefoundry/looplane) — 程式碼代理迭代迴圈
@@ -42,39 +42,19 @@ gatelane 是 [lanefoundry](https://github.com/lanefoundry) *-lane 家族的第�
 
 gatelane 提供這個原語。
 
-## 模式
+## CLI 指令
 
-gatelane 在共用引擎上運行。兩種模式使用它。
-
-### 模式 A — 紅隊
-
-對已部署的代理執行攻擊探測。輸出：包含有效載荷、代理回應、證據和結構化修補建議的漏洞清單。
-
-```text
-攻擊有效載荷 → 代理回應 → 成功/失敗
-                              ↓
-                      漏洞記錄
-                      + 修補建議
-```
+| 指令 | 說明 |
+|---|---|
+| `gatelane scan` | 安全掃描 — 對模型執行攻擊探測 |
+| `gatelane eval` | 品質評估 — 對資料集回測，產出每個 candidate 的指標 |
+| `gatelane run` | 完整管線 — scan + eval 一次跑完 |
+| `gatelane snapshot` | 將生產流量快照為資料集 |
+| `gatelane init` | 建立 `gatelane.config.yaml` 初始設定檔 |
 
 攻擊庫包含 50+ 個 prompt injection 向量，涵蓋直接 prompt injection、透過工具的間接 injection、連鎖攻擊、上下文視窗洪泛、記憶體投毒和工具濫用。整合 [garak](https://github.com/NVIDIA/garak)（NVIDIA）、[PyRIT](https://github.com/Azure/PyRIT)（Microsoft）和 [Promptfoo](https://github.com/promptfoo/promptfoo)（OpenAI）。
 
-### 模式 B — 回測
-
-將凍結的生產流量切片重播到新模型版本。輸出：簽章升級報告。如果 `Δ ≥ threshold`，路由到 canary。否則自動回滾。
-
-```text
-凍結的生產切片 → 對新模型重播
-                     ↓
-              計算 Δ vs 基線
-                     ↓
-             簽章升級報告
-                     ↓
-         Δ ≥ X → canary → 100%
-         Δ < X → 自動回滾
-```
-
-這是其他產品都沒有提供的原語。詳見 [positioning](docs/positioning.md#compare-view-vs-promotion-gate)。
+品質評估管線將凍結的生產流量切片重播到新模型版本，輸出簽章升級報告。如果 `Δ ≥ threshold`，路由到 canary，否則自動回滾。這是其他產品都沒有提供的原語。詳見 [positioning](docs/positioning.md#compare-view-vs-promotion-gate)。
 
 ## 威脅模型範圍（v1）
 
@@ -93,10 +73,10 @@ gatelane 在共用引擎上運行。兩種模式使用它。
 | LLM 閘道 / 路由 | OpenRouter ($1.3B)、LiteLLM (28k★)、Bifrost (4k★)、Cloudflare AI Gateway | gatelane 不是閘道。使用以上方案。gatelane 的捕獲 SDK 讀取代理呼叫的內容。 |
 | LLM APM / 追蹤 | Datadog、New Relic、Honeycomb | gatelane 不是 APM。gatelane 的稽核日誌記錄對升級重要的事件；APM 記錄一切。 |
 | LLM 評估 / 資料集 | LangSmith、Braintrust、Arize、DeepEval、Vellum | 這些是評估執行器。gatelane 的升級閘門是評估**之後**發生的事。 |
-| 紅隊 / 攻擊庫 | Mindgard、Lakera (Check Point)、Pillar、Straiker、CyCraft、Noma | 這些競爭攻擊面涵蓋範圍。gatelane 的紅隊模式刻意較小；價值在於與回測形成閉環，而非更廣泛的攻擊。 |
+| 安全掃描 / 攻擊庫 | Mindgard、Lakera (Check Point)、Pillar、Straiker、CyCraft、Noma | 這些競爭攻擊面涵蓋範圍。gatelane 的安全掃描刻意較小；價值在於與品質評估形成閉環，而非更廣泛的攻擊。 |
 | 工作流控制平面 | Temporal、Inngest、LangGraph、Cloudflare Workflows | gatelane 不是工作流執行時。升級閘門在你使用的任何執行時**之上**運行。 |
 
-gatelane 是**市場上其他產品都沒有提供的一個原語**：基於回測差異的升級，由紅隊在後端形成閉環。
+gatelane 是**市場上其他產品都沒有提供的一個原語**：基於回測差異的升級，由安全掃描在後端形成閉環。
 
 ## 快速開始
 
@@ -107,7 +87,7 @@ gatelane 是**市場上其他產品都沒有提供的一個原語**：基於回�
 
 - Node.js 22+、pnpm 10、Git
 - Cloudflare 帳戶（用於生產部署）
-- 用於評估/回測裁判模型的 LLM API 金鑰（OpenAI、Anthropic、Gemini、OpenCode Zen 或自建）
+- 用於評估/回測裁判模型的 LLM API 金鑰（OpenAI、Anthropic、Gemini 或自建）
 
 ### 安裝
 
@@ -125,9 +105,6 @@ cp .env.example .env
 GATELANE_JUDGE_PROVIDER=openai
 GATELANE_JUDGE_API_KEY=sk-...
 GATELANE_JUDGE_MODEL=gpt-4o
-
-# 或使用 OpenCode Zen（一個 key 即可存取 64 個模型）
-# OPENCODE_API_KEY=...
 
 # 捕獲 API 認證（>= 32 個隨機字元）
 GATELANE_CAPTURE_TOKEN=$(openssl rand -hex 32)
@@ -177,37 +154,22 @@ const { response, record } = await capture(env, {
 });
 ```
 
-### 對代理執行紅隊測試
+### 執行安全掃描
 
-程式化 API（CLI 封裝計劃在 v0.2）：
-
-```typescript
-import { allVectors, runAttack, generateReport } from "@gatelane/mode-red-team";
-
-const results = await Promise.all(
-  allVectors.map((v) => runAttack(v, "http://localhost:3000/agent")),
-);
-const report = generateReport(results, ["http://localhost:3000/agent"]);
-// report 包含：成功的攻擊、有效載荷、證據、修補建議
+```bash
+npx gatelane scan
 ```
 
-### 凍結生產切片並回測
+### 執行品質評估
 
-程式化 API（CLI 封裝計劃在 v0.2）：
+```bash
+npx gatelane eval --dataset my-dataset.json --format table
+```
 
-```typescript
-import { backtest } from "@gatelane/mode-backtest";
+### 一次跑完
 
-const report = await backtest(env, {
-  window: "7d",
-  candidateModel: "gpt-5",
-  baselineModel: "gpt-4o",
-  threshold: 0.02,
-  judge: async (prompt, response) => { /* 回傳 0-1 分數 */ },
-  execute: async (prompt, model) => { /* 呼叫 LLM */ },
-});
-// report.decision === "promote" → Δ >= threshold
-// report.decision === "rollback" → Δ < threshold
+```bash
+npx gatelane run --dataset my-dataset.json
 ```
 
 ## 部署到 Cloudflare
@@ -233,19 +195,19 @@ pnpm run deploy
 
 > 「我們是否暴露於已知的攻擊向量？我們怎麼知道修補有效？」
 
-在每次發佈前執行**模式 A**。修補後執行**模式 B**，驗證新版本不會在品質**或**攻擊抵抗力上退化。
+在每次發佈前執行 `gatelane scan`。修補後執行 `gatelane eval`，驗證新版本不會在品質**或**攻擊抵抗力上退化。
 
 ### 正在出貨 LLM 功能的 ML / 平台團隊
 
 > 「我們能否在不整天盯著比較視圖的情況下出貨新模型版本？」
 
-在每個修改模型配置的 PR 上執行**模式 B**。升級閘門自動路由到 canary 或回滾。
+在每個修改模型配置的 PR 上執行 `gatelane eval`。升級閘門自動路由到 canary 或回滾。
 
 ### 程式碼代理團隊
 
 > 「如果我的程式碼代理被 prompt injection 劫持怎麼辦？我怎麼知道什麼時候修好了？」
 
-使用程式碼代理特定的攻擊向量（工具濫用、透過程式碼執行的間接 injection）執行**模式 A**。使用代理生產流量的凍結資料集執行**模式 B** 來驗證修補。
+使用程式碼代理特定的攻擊向量（工具濫用、透過程式碼執行的間接 injection）執行 `gatelane scan`。使用代理生產流量的凍結資料集執行 `gatelane eval` 來驗證修補。
 
 ### CISO / 合規長（v2 範圍）
 
@@ -287,16 +249,10 @@ pnpm format           # 以 Prettier 自動格式化
 | GET | `/v1/promotions` | 列出所有升級報告 |
 | GET | `/v1/promotions/:id` | 取得指定升級報告 |
 | GET | `/v1/audit-log` | 列出稽核日誌項目 |
-| GET | `/v1/canaries` | 列出 canary 部署 |
-| GET | `/v1/canaries/:id` | 取得指定 canary 記錄 |
-| POST | `/v1/canaries` | 啟動 canary 部署（需要 Bearer token） |
-| POST | `/v1/canaries/:id/observe` | 記錄指標觀察值（需要 Bearer token） |
-| POST | `/v1/canaries/:id/advance` | 推進 canary 狀態機（需要 Bearer token） |
-| POST | `/v1/canaries/:id/rollback` | 手動回滾（需要 Bearer token） |
 
 ### 儀表板
 
-儀表板是一個 React + Vite 應用，包含 7 個頁面（捕獲、資料集、重播執行、升級報告、Canary、紅隊、稽核日誌）。本地啟動方式：
+儀表板是一個 React + Vite 應用，包含 6 個頁面（捕獲、資料集、重播執行、升級報告、安全掃描、稽核日誌）。本地啟動方式：
 
 ```bash
 cd apps/dashboard
@@ -308,10 +264,12 @@ pnpm dev              # 啟動於 localhost:5173
 
 | 套件 | 說明 |
 |---|---|
-| `@gatelane/shared` | 共用型別（CaptureRecord、Dataset、ReplayRun、PromotionReport、Env）和 D1 schema |
-| `@gatelane/engine` | 捕獲 SDK、資料集（freeze-slice）、重播、比較、稽核日誌、升級原語 |
-| `@gatelane/mode-red-team` | 50+ 攻擊向量（6 類別）、執行器、報告產生器 |
-| `@gatelane/mode-backtest` | 端到端回測流程（凍結 → 重播 → 比較 → 升級/回滾） |
+| `@lanefoundry/gatelane-engine` | 統一引擎：LLM caller、judge、replay、compare、sign、security scan、tracing、OTel export |
+| `@lanefoundry/gatelane-sdk` | 獨立 SDK：capture、dataset、gate、promotion、可插拔儲存（fs / http） |
+| `@lanefoundry/gatelane-cli` | CLI 介面（`gatelane` 指令） |
+| `@lanefoundry/source-prod-slice` | 生產切片：freeze-slice、replay-batch、compare-scores、canary orchestrator、signed report、audit export |
+| `gatelane-sdk`（Python） | Python SDK：capture、storage、types |
+| `@lanefoundry/ci-adapter` | CI/CD 整合（GitHub Actions） |
 
 ## 儲存庫結構
 
@@ -329,9 +287,12 @@ gatelane/
 │   ├── attack-library.md       — 50+ 攻擊向量參考
 │   └── architecture.md         — 共用引擎內部、資料流、schema
 ├── packages/
-│   ├── engine/                 — 捕獲 SDK + 資料集 + 重播 + 比較 + 稽核日誌 + 升級原語
-│   ├── mode-red-team/          — 模式 A：6 攻擊類別、50+ 向量、執行器、報告
-│   ├── mode-backtest/          — 模式 B：資料集重播 + 比較 + 升級閘門
+│   ├── gatelane-engine/        — 統一引擎：LLM caller、judge、replay、compare、sign、security scan、tracing
+│   ├── gatelane-sdk/           — 獨立 SDK：capture、dataset、gate、promotion、可插拔儲存
+│   ├── gatelane-sdk-py/        — Python SDK：capture、storage、types
+│   ├── cli/                    — CLI 介面（gatelane 指令）
+│   ├── source-prod-slice/      — 生產切片：freeze、replay-batch、canary、signed-report、audit-export
+│   ├── ci-adapter/             — CI/CD 整合（GitHub Actions）
 │   └── shared/                 — 共用型別、D1 schema
 ├── apps/
 │   ├── worker/                 — Cloudflare Worker（Hono、捕獲端點 + 重播 API）
@@ -365,8 +326,8 @@ gatelane/
 | 捕獲 SDK（一行整合） | ✅ 完成 (2026-09-03) |
 | 共用引擎（資料集 / 重播 / 比較 / 稽核日誌 / 升級） | ✅ 完成 (2026-09-03) |
 | Worker API（捕獲端點 + 重播 API） | ✅ 完成 (2026-09-03) |
-| 模式 A（紅隊，50+ 攻擊） | ✅ 完成 (2026-09-03) — 6 類別、50+ 向量、執行器、報告 |
-| 模式 B（回測，升級閘門） | ✅ 完成 (2026-09-03) |
+| 安全掃描（50+ 攻擊） | ✅ 完成 (2026-09-03) — 6 類別、50+ 向量、執行器、報告 |
+| 品質評估（回測，升級閘門） | ✅ 完成 (2026-09-03) |
 | 儀表板（攻擊報告 + 升級報告 UI） | ✅ 完成 (2026-09-03) — 6 頁面、hash router、TanStack Query |
 | 文件：threat-model.md | ✅ 完成 (2026-09-03) |
 | 文件：attack-library.md | ✅ 完成 (2026-09-03) |

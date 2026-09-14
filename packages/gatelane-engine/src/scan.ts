@@ -1,9 +1,6 @@
 /**
- * Red-team attack report + patch-verify cycle.
+ * Security scan: attack report + patch-verify cycle.
  * Built on top of the gate's replay + judge + compare primitives.
- *
- * @see docs/prd.md §5.2.1 — Red-team dataset
- * @see docs/roadmap.md Week 3-4 — Red-team dataset source
  */
 import { parseProviderModel, type LLMCaller } from './llm.js';
 import type { ReplayResult, ReplayArgs } from './replay.js';
@@ -13,7 +10,7 @@ import { replay } from './replay.js';
 import { compare } from './compare.js';
 import { evaluate, type EvaluateResult } from './evaluate.js';
 import { signReport } from './sign.js';
-import type { GateReport, GateDecision, GatePolicy } from '@lanefoundry/gatelane-sdk/promotion';
+import type { PromotionReport, PromotionDecision, PromotionPolicy } from '@lanefoundry/gatelane-sdk/promotion';
 import { shaOfCandidateRef } from '@lanefoundry/gatelane-sdk';
 import type { FrozenDataset } from '@lanefoundry/gatelane-sdk/dataset';
 import type { InjectionCategory, InjectionPayload } from './attack.js';
@@ -74,8 +71,8 @@ export type AttackReport = {
   judges: string[];
 };
 
-/** Options for running the red-team gate. */
-export type RunRedTeamArgs = {
+/** Options for running a security scan. */
+export type RunScanArgs = {
   /** Dataset to attack (e.g., from freezeInjectionDataset()). */
   dataset: FrozenDataset;
   /** Candidate refs to evaluate. */
@@ -89,38 +86,23 @@ export type RunRedTeamArgs = {
   /** Master seed for deterministic replay. */
   seed?: number;
   /** Promotion policy for gate decision. */
-  policy?: GatePolicy;
+  policy?: PromotionPolicy;
   /** Optional baseline candidate ref. */
   baseline?: string;
   /** Optional approver (when policy.approval_required). */
   approver?: string;
-  /** Optional signing key — if provided, returns signed GateReport. */
+  /** Optional signing key — if provided, returns signed PromotionReport. */
   signing_key?: string;
 };
 
-/** Lightweight replay row for scan output (no toCapturedCall function). */
-export type ScanReplayRow = {
-  item_id: string;
-  candidate_ref: string;
-  content: string;
-  cost_usd: number;
-  latency_ms: number;
-  tokens_in?: number;
-  tokens_out?: number;
-};
-
-/** Result of running the red-team gate. */
-export type RunRedTeamResult = {
+/** Result of running a security scan. */
+export type RunScanResult = {
   /** Attack report with vulnerability details. */
   attackReport: AttackReport;
-  /** Per-item replay outputs (attack payload → model response). */
-  replayRows: ScanReplayRow[];
-  /** Raw judge verdicts. */
-  verdicts: JudgeVerdict[];
-  /** Gate result (pass/block/hold + signed report if signing_key provided). */
+  /** Gate result (promote/rollback/hold + signed report if signing_key provided). */
   gateResult: {
-    report: GateReport;
-    decision: GateDecision;
+    report: PromotionReport;
+    decision: PromotionDecision;
     evaluate: EvaluateResult;
   } | null;
 };
@@ -243,7 +225,7 @@ export function buildAttackReport(args: {
 
 /**
  * Collect judge verdicts for a replay result.
- * Extracted from runner logic so both runner and red-team path share it.
+ * Extracted from runner logic so both runner and scan path share it.
  */
 export async function collectVerdicts(args: {
   replayResult: ReplayResult;
@@ -290,10 +272,10 @@ export function resolveCandidates(refs: ReadonlyArray<string>): ReadonlyArray<{ 
 }
 
 /**
- * Run the full red-team gate: replay + judge + compare + sign + evaluate + attack report.
+ * Run a full security scan: replay + judge + compare + sign + evaluate + attack report.
  * Returns both the attack report and the gate decision.
  */
-export async function runRedTeamGate(args: RunRedTeamArgs): Promise<RunRedTeamResult> {
+export async function runScanGate(args: RunScanArgs): Promise<RunScanResult> {
   const {
     dataset,
     candidates,
@@ -349,7 +331,7 @@ export async function runRedTeamGate(args: RunRedTeamArgs): Promise<RunRedTeamRe
   for (const ref of candidates) candidate_shas[ref] = await shaOfCandidateRef(ref);
   const judge_shas: Record<string, string> = {};
   for (const j of judges) judge_shas[j] = await shaOfCandidateRef(j);
-  const scorerCodeSha = await shaOfCandidateRef('gatelane-engine:redteam:v0.0.1-dev');
+  const scorerCodeSha = await shaOfCandidateRef('gatelane-engine:scan:v0.0.1-dev');
 
   const candidate_metrics: Record<string, { aggregate_delta: number; cost_delta: number; latency_delta: number }> = {};
   for (const [ref, m] of Object.entries(perCandidate)) {
@@ -371,7 +353,7 @@ export async function runRedTeamGate(args: RunRedTeamArgs): Promise<RunRedTeamRe
 
   const runId = crypto.randomUUID();
   const reportId = crypto.randomUUID();
-  const baseReport: GateReport = {
+  const baseReport: PromotionReport = {
     id: reportId,
     gate_run_id: runId,
     dataset_content_hash: dataset.content_hash,
@@ -388,10 +370,10 @@ export async function runRedTeamGate(args: RunRedTeamArgs): Promise<RunRedTeamRe
     signature: 'pending',
   };
 
-  let gateResult: RunRedTeamResult['gateResult'] = null;
+  let gateResult: RunScanResult['gateResult'] = null;
   if (signing_key) {
     const signature = await signReport(baseReport, signing_key);
-    const signed: GateReport = { ...baseReport, signature };
+    const signed: PromotionReport = { ...baseReport, signature };
     const { decision, rule_results } = evaluate({
       candidates,
       perCandidate,
@@ -402,21 +384,11 @@ export async function runRedTeamGate(args: RunRedTeamArgs): Promise<RunRedTeamRe
     gateResult = { report: signed, decision, evaluate: { decision, rule_results } };
   }
 
-  const scanRows: ScanReplayRow[] = replayResult.rows.map((r) => ({
-    item_id: r.item_id,
-    candidate_ref: r.candidate_ref,
-    content: r.response.content,
-    cost_usd: r.response.cost_usd,
-    latency_ms: r.response.latency_ms,
-    tokens_in: r.response.tokens_in,
-    tokens_out: r.response.tokens_out,
-  }));
-
-  return { attackReport, replayRows: scanRows, verdicts, gateResult };
+  return { attackReport, gateResult };
 }
 
 /**
- * Verify that a patch holds against the same red-team dataset.
+ * Verify that a patch holds against the same scan dataset.
  * Compares baseline candidate failures vs patched candidate outcomes.
  */
 export function verifyPatchHolds(args: {

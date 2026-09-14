@@ -142,12 +142,12 @@ export function validatePolicy(policy: PromotionPolicy): void {
   if (policy.latency_ceiling < 0) {
     throw new Error('policy.latency_ceiling must be >= 0');
   }
-  if (policy.auto_rollback_rule !== undefined) {
-    if (policy.auto_rollback_rule.metric_drop < 0 || policy.auto_rollback_rule.metric_drop > 1) {
-      throw new Error('policy.auto_rollback_rule.metric_drop must be in [0, 1]');
+  if (policy.auto_block_rule !== undefined) {
+    if (policy.auto_block_rule.metric_drop < 0 || policy.auto_block_rule.metric_drop > 1) {
+      throw new Error('policy.auto_block_rule.metric_drop must be in [0, 1]');
     }
-    if (!policy.auto_rollback_rule.window || typeof policy.auto_rollback_rule.window !== 'string') {
-      throw new Error('policy.auto_rollback_rule.window must be a non-empty string (e.g., "24h")');
+    if (!policy.auto_block_rule.window || typeof policy.auto_block_rule.window !== 'string') {
+      throw new Error('policy.auto_block_rule.window must be a non-empty string (e.g., "24h")');
     }
   }
 }

@@ -4,10 +4,10 @@
  * Manages the canary lifecycle with D1 persistence for durability.
  * States: pending → canary → observing → promoting → promoted | rolled_back | failed
  *
- * @see docs/prd.md §5.1 — The gate (auto_rollback_rule)
+ * @see docs/prd.md §5.1 — The gate (auto_block_rule)
  */
 
-import type { PromotionReport, PromotionDecision } from '@lanefoundry/gatelane-sdk/promotion';
+import type { PromotionReport, PromotionDecision, PromotionPolicy } from '@lanefoundry/gatelane-sdk/promotion';
 import type { D1DatabaseLike } from '@lanefoundry/gatelane-sdk';
 
 /** Canary deployment state. */
@@ -39,7 +39,7 @@ export type CanaryRecord = {
   /** When the canary was completed (promoted/rolled_back). */
   completedAt?: string;
   /** Auto-rollback rule from policy. */
-  autoRollbackRule?: PromotionPolicy['auto_rollback_rule'];
+  autoRollbackRule?: PromotionPolicy['auto_block_rule'];
   /** Metric observations during canary. */
   observations: CanaryObservation[];
   /** Error message if failed. */
@@ -71,11 +71,11 @@ export type StartCanaryArgs = {
   candidateRef: string;
   /** The signed PromotionReport. */
   report: PromotionReport;
-  /** The PromotionDecision (must be 'promote'). */
+  /** The PromotionDecision (must be 'pass'). */
   decision: PromotionDecision;
   /** Initial canary traffic percentage. Default: 10. */
   initialTrafficPercent?: number;
-  /** Custom observation window. Default: from policy.auto_rollback_rule.window or "24h". */
+  /** Custom observation window. Default: from policy.auto_block_rule.window or "24h". */
   observationWindow?: string;
 };
 
@@ -172,11 +172,11 @@ export async function startCanary(args: StartCanaryArgs): Promise<CanaryResult> 
     observationWindow,
   } = args;
 
-  if (decision.action !== 'promote') {
-    throw new Error(`Cannot start canary: decision action is '${decision.action}', expected 'promote'`);
+  if (decision.action !== 'pass') {
+    throw new Error(`Cannot start canary: decision action is '${decision.action}', expected 'pass'`);
   }
 
-  const autoRollbackRule = report.policy.auto_rollback_rule;
+  const autoRollbackRule = report.policy.auto_block_rule;
   const window = observationWindow ?? autoRollbackRule?.window ?? '24h';
   const windowMs = parseWindow(window);
   const now = new Date();
@@ -366,7 +366,7 @@ type CanaryRow = {
   started_at: string;
   observation_ends_at: string | null;
   completed_at: string | null;
-  auto_rollback_rule: string | null;
+  auto_block_rule: string | null;
   observations: string;
   error: string | null;
   report: string;
@@ -378,7 +378,7 @@ export class D1CanaryStorage implements CanaryStorage {
 
   async create(record: CanaryRecord): Promise<void> {
     await this.db.prepare(
-      `INSERT INTO canary_deployments (id, gate_run_id, candidate_ref, state, traffic_percent, started_at, observation_ends_at, auto_rollback_rule, observations, report, decision)
+      `INSERT INTO canary_deployments (id, gate_run_id, candidate_ref, state, traffic_percent, started_at, observation_ends_at, auto_block_rule, observations, report, decision)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(
       record.id,
@@ -398,7 +398,7 @@ export class D1CanaryStorage implements CanaryStorage {
   async read(id: string): Promise<CanaryRecord | null> {
     const row = await this.db.prepare('SELECT * FROM canary_deployments WHERE id = ?').bind(id).first();
     if (!row) return null;
-    return this.rowToRecord(row);
+    return this.rowToRecord(row as CanaryRow);
   }
 
   async update(record: CanaryRecord): Promise<void> {
@@ -432,7 +432,7 @@ export class D1CanaryStorage implements CanaryStorage {
       sql += ' LIMIT ?';
     }
     const { results } = await this.db.prepare(sql).bind(...params).all();
-    return (results ?? []).map((row: CanaryRow) => this.rowToRecord(row));
+    return (results ?? []).map((row) => this.rowToRecord(row as CanaryRow));
   }
 
   private rowToRecord(row: CanaryRow): CanaryRecord {
@@ -443,11 +443,11 @@ export class D1CanaryStorage implements CanaryStorage {
       state: row.state,
       trafficPercent: row.traffic_percent,
       startedAt: row.started_at,
-      observationEndsAt: row.observation_ends_at,
-      completedAt: row.completed_at,
-      autoRollbackRule: row.auto_rollback_rule ? JSON.parse(row.auto_rollback_rule) : undefined,
+      observationEndsAt: row.observation_ends_at ?? undefined,
+      completedAt: row.completed_at ?? undefined,
+      autoRollbackRule: row.auto_block_rule ? JSON.parse(row.auto_block_rule) : undefined,
       observations: JSON.parse(row.observations),
-      error: row.error,
+      error: row.error ?? undefined,
       report: JSON.parse(row.report),
       decision: JSON.parse(row.decision),
     };

@@ -52,13 +52,13 @@ Legend:
 | `promote()` decision | ✓ | · | same as `runGate()` |
 | `rollback()` decision | ✓ | · | same as `runGate()` |
 
-## Red team
+## Security scan
 
 | Surface | JS SDK | Python SDK | Wire format |
 |---|---|---|---|
-| `runAttack()` | ✓ (engine) | · | `POST /v1/redteam` |
-| `allVectors` | ✓ (engine) | · | `GET /v1/redteam/vectors` |
-| `generateReport()` | ✓ (engine) | · | `GET /v1/redteam/report/:id` |
+| `runAttack()` | ✓ (engine) | · | `POST /v1/scan` |
+| `allVectors` | ✓ (engine) | · | `GET /v1/scan/vectors` |
+| `generateReport()` | ✓ (engine) | · | `GET /v1/scan/report/:id` |
 
 ## Engine primitives (embedded mode)
 

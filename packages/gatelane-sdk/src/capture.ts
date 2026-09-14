@@ -30,44 +30,6 @@ import { getStorage } from './storage.js';
 
 import type { DatasetSourceKind } from './dataset.js';
 
-/** A single step in a multi-turn agent trace.
- *
- * Flat turns array is the primary representation for eval/replay.
- * `span_id` + `parent_span_id` overlay a nested tree for OTel/APM export
- * without changing the storage format — consumers that only need the flat
- * list ignore the span fields; consumers that need the tree reconstruct it. */
-export type Turn = {
-  readonly role: 'system' | 'user' | 'assistant' | 'tool';
-  readonly content: string | null;
-  readonly tool_calls?: ReadonlyArray<{
-    readonly id: string;
-    readonly name: string;
-    readonly arguments: string;
-  }>;
-  readonly tool_call_id?: string;
-  readonly name?: string;
-
-  // ── Error tracking ──
-  readonly status?: 'ok' | 'error' | 'timeout';
-  readonly error?: {
-    readonly type: string;
-    readonly message: string;
-    readonly stack?: string;
-  };
-
-  // ── Nested span overlay (OTel-compatible) ──
-  readonly span_id?: string;
-  readonly parent_span_id?: string;
-  readonly span_kind?: 'llm' | 'tool' | 'agent' | 'retriever' | 'guardrail';
-  readonly started_at?: string;
-  readonly completed_at?: string;
-  readonly cost_usd?: number;
-  readonly latency_ms?: number;
-  readonly tokens_in?: number;
-  readonly tokens_out?: number;
-  readonly model?: string;
-};
-
 export type CaptureMetadata = {
   readonly traceId?: string;
   readonly agentVersion?: string;
@@ -92,28 +54,35 @@ export type CapturedCall = {
   readonly completed_at: string;
   readonly cost_usd: number;
   readonly latency_ms: number;
-  /** Span kind: gate.replay, gate.compare, gate.pass, redteam.attack, redteam.judge. */
+  /** Span kind: gate.replay, gate.compare, gate.promote, scan.attack, scan.judge. */
   readonly span_kind?: string;
-  /** Full multi-turn agent trace. When present, this is the source of truth;
-   *  `input` and `output` are derived summaries for backward compatibility. */
-  readonly turns?: ReadonlyArray<Turn>;
-  /** Overall trace outcome — derived from turns[].status. */
-  readonly outcome?: 'success' | 'partial_failure' | 'failure';
-  /** Top-level error summaries extracted from turns. */
-  readonly errors?: ReadonlyArray<{
-    readonly turn_index: number;
-    readonly type: string;
-    readonly message: string;
-  }>;
+};
+
+/** A single step in a multi-turn agent trace (user/assistant/tool). */
+export type Turn = {
+  readonly role: 'system' | 'user' | 'assistant' | 'tool';
+  readonly content: string | null;
+  readonly tool_call_id?: string;
+  readonly name?: string;
+  readonly tool_calls?: ReadonlyArray<{ id: string; name: string; arguments: string }>;
+  readonly status?: 'ok' | 'error' | 'timeout';
+  readonly error?: { type: string; message: string; stack?: string };
+  readonly span_kind?: string;
+  readonly span_id?: string;
+  readonly parent_span_id?: string;
+  readonly model?: string;
+  readonly started_at?: string;
+  readonly completed_at?: string;
+  readonly cost_usd?: number;
+  readonly latency_ms?: number;
+  readonly tokens_in?: number;
+  readonly tokens_out?: number;
 };
 
 export type CaptureOptions = {
   readonly span_kind?: string;
   /** If true, observe without writing. Used for SDK validation in prod. */
   readonly dry_run?: boolean;
-  /** Full multi-turn agent trace. When provided, the trace is stored alongside
-   *  the legacy input/output fields for backward compatibility. */
-  readonly turns?: ReadonlyArray<Turn>;
 };
 
 /**
@@ -147,7 +116,6 @@ export async function capture<T>(
     cost_usd: 0, // placeholder; real impl reads from model registry
     latency_ms,
     ...(options.span_kind !== undefined ? { span_kind: options.span_kind } : {}),
-    ...(options.turns !== undefined ? { turns: options.turns } : {}),
   };
 
   // Fire-and-await: a capture write failure must not break the user's call.

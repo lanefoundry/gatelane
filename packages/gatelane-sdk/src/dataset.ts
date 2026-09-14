@@ -2,14 +2,14 @@
  * Frozen dataset — content-addressed, immutable, versioned.
  *
  * A dataset is the input to a gate run. Three sources:
- * - `redteam` — curated attacks from garak / PyRIT / Promptfoo / DeepTeam
+ * - `scan` — curated attacks from garak / PyRIT / Promptfoo / DeepTeam
  * - `prod` — frozen production slice from capture SDK
  * - `compliance` — curated cases mapped to NIST / AI Basic Act / EU AI Act
  *
  * @see docs/prd.md §5.2 — Three dataset sources
  */
 
-export type DatasetSourceKind = 'redteam' | 'prod' | 'compliance';
+export type DatasetSourceKind = 'scan' | 'prod' | 'compliance';
 
 export type FrozenDataset = {
   /** Content hash of the dataset. */

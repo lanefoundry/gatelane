@@ -9,22 +9,22 @@ and auto-promotes or rolls back based on a configurable quality threshold.
 
 ## 1. High-Level Overview
 
-Gatelane is a monorepo organized around a **shared engine** that powers two
-independent operating modes:
+Gatelane is a monorepo organized around a **unified engine** that powers
+two CLI commands through a single promotion gate:
 
-- **Mode A -- Backtest** (`packages/mode-backtest`): Takes a time window of
-  production captures, freezes them into a dataset, replays the dataset
-  against a candidate model, and produces a promote/rollback decision.
-  Designed for scheduled or on-demand model upgrades.
-
-- **Mode B -- Red Team** (`packages/mode-red-team`): Runs adversarial
+- **`gatelane scan`** (`packages/gatelane-engine`): Runs adversarial
   attack vectors (prompt injection, tool abuse, context flooding, etc.)
   against a target and produces a vulnerability report. Designed for
   pre-deployment security validation.
 
-Both modes import primitives from the engine and share the same type
-definitions and storage bindings. The worker application exposes the
-capture and query API and can orchestrate either mode.
+- **`gatelane eval`** (`packages/source-prod-slice` + `packages/gatelane-engine`):
+  Takes a time window of production captures, freezes them into a dataset,
+  replays the dataset against candidate models, and produces a pass/block
+  decision. Designed for scheduled or on-demand model upgrades.
+
+Both commands share the same engine primitives, type definitions, and
+storage bindings. The worker application exposes the capture and query
+API, and the CLI orchestrates either command.
 
 ```
                       +---------------------+
@@ -32,25 +32,28 @@ capture and query API and can orchestrate either mode.
                       |  (Hono on CF Workers)|
                       +---------+-----------+
                                 |
+                      +---------+-----------+
+                      | packages/cli        |
+                      | scan, eval, run,    |
+                      | snapshot, canary    |
+                      +---------+-----------+
+                                |
                   +-------------+-------------+
                   |                           |
         +---------+---------+       +---------+---------+
         | packages/         |       | packages/         |
-        | mode-backtest     |       | mode-red-team     |
-        +--------+----------+       +--------+----------+
-                 |                           |
+        | source-prod-slice |       | gatelane-engine   |
+        | freeze, replay,   |       | LLM caller, judge,|
+        | canary, audit     |       | attack, scan,     |
+        +--------+----------+       | compare, sign     |
+                 |                  +--------+----------+
                  +----------+----------------+
                             |
                   +---------+---------+
-                  | packages/engine   |
-                  | capture, replay,  |
-                  | compare, promote, |
-                  | dataset, audit    |
-                  +--------+----------+
-                           |
-                  +--------+----------+
-                  | packages/shared   |
-                  | types, D1 schema  |
+                  | packages/         |
+                  | gatelane-sdk      |
+                  | capture, dataset, |
+                  | gate, promotion   |
                   +-------------------+
 ```
 
@@ -61,31 +64,29 @@ capture and query API and can orchestrate either mode.
 The monorepo uses pnpm workspaces. Dependencies flow strictly upward:
 
 ```
-packages/shared          (zero deps)
+packages/gatelane-sdk           (zero deps)
     ^
     |
-packages/engine          (depends on shared)
+packages/gatelane-engine        (depends on gatelane-sdk)
     ^
     |
-packages/mode-backtest   (depends on shared + engine)
-packages/mode-red-team   (depends on shared + engine)
+packages/source-prod-slice      (depends on gatelane-sdk + gatelane-engine)
+packages/cli                    (depends on gatelane-sdk + gatelane-engine + source-prod-slice)
     ^
     |
-apps/worker              (depends on shared + engine + hono)
+apps/worker                     (depends on gatelane-sdk + gatelane-engine + hono)
 ```
 
 ### Package inventory
 
-| Package                  | npm name               | Purpose                                               |
-|--------------------------|------------------------|-------------------------------------------------------|
-| `packages/shared`        | `@gatelane/shared`     | TypeScript interfaces, D1 SQL schema, `Env` binding   |
-| `packages/engine`        | `@gatelane/engine`     | Core primitives: capture, dataset, replay, compare, promotion, audit log |
-| `packages/mode-backtest` | `@gatelane/mode-backtest` | Orchestrates freeze-replay-promote in one call      |
-| `packages/mode-red-team` | `@gatelane/mode-red-team` | Adversarial attack vectors and reporting types       |
-| `packages/source-prod-slice` | `@lanefoundry/source-prod-slice` | Production slice: freeze, replay-batch, canary orchestrator, signed reports, audit export |
-| `packages/ci-adapter`    | `@lanefoundry/gatelane-ci-adapter` | CI/CD adapter: parse gate output → GitHub Actions outputs/exit codes |
-| `apps/worker`            | `@gatelane/worker`     | Cloudflare Worker; Hono HTTP server + scheduled canary handler |
-| `apps/dashboard`         | `@gatelane/dashboard`  | React + Vite dashboard (7 pages: captures, datasets, replay runs, promotions, canary, red team, audit log) |
+| Package                      | npm name                          | Purpose                                                        |
+|------------------------------|-----------------------------------|----------------------------------------------------------------|
+| `packages/gatelane-sdk`      | `@lanefoundry/gatelane-sdk`       | Capture SDK, dataset, gate, promotion, pluggable storage       |
+| `packages/gatelane-engine`   | `@lanefoundry/gatelane-engine`    | Unified engine: LLM caller, judge, replay, compare, sign, security scan, tracing, OTel export |
+| `packages/source-prod-slice` | `@lanefoundry/source-prod-slice`  | Production slice: freeze-slice, replay-batch, canary, signed report, audit export |
+| `packages/cli`               | `@lanefoundry/gatelane-cli`       | CLI interface (`gatelane scan`, `eval`, `run`, `snapshot`, `canary`) |
+| `packages/ci-adapter`        | `@lanefoundry/ci-adapter`         | CI/CD integration (GitHub Actions)                             |
+| `apps/worker`                | `@gatelane/worker`                | Cloudflare Worker; Hono HTTP server                            |
 
 ### Engine exports
 
@@ -247,7 +248,6 @@ Request body:
 
 | Method | Path                  | Description                         |
 |--------|-----------------------|-------------------------------------|
-| GET    | `/v1/captures`        | List captures (filter: since, model, limit) |
 | GET    | `/v1/datasets`        | List datasets (most recent 50)      |
 | GET    | `/v1/datasets/:id`    | Get single dataset                  |
 | GET    | `/v1/replay-runs`     | List replay runs (most recent 50)   |
@@ -258,28 +258,6 @@ Request body:
 
 All query endpoints return JSON. No authentication is currently enforced
 on read endpoints.
-
-### Canary
-
-| Method | Path                          | Auth         | Description                                   |
-|--------|-------------------------------|--------------|-----------------------------------------------|
-| GET    | `/v1/canaries`                | —            | List canary deployments (filter: state, limit) |
-| GET    | `/v1/canaries/:id`            | —            | Get single canary record                      |
-| POST   | `/v1/canaries`                | Bearer token | Start a canary deployment                     |
-| POST   | `/v1/canaries/:id/observe`    | Bearer token | Record a metric observation                   |
-| POST   | `/v1/canaries/:id/advance`    | Bearer token | Advance the canary state machine              |
-| POST   | `/v1/canaries/:id/rollback`   | Bearer token | Manual rollback with reason                   |
-
-### Scheduled handler (cron)
-
-The Worker runs a scheduled handler every 5 minutes (`*/5 * * * *`) that:
-
-1. **Auto-observe** — collects error rate, avg latency, and avg cost from
-   recent captures for each active canary, and records observations.
-   Triggers auto-rollback if a metric breaches the policy threshold.
-2. **Tick** — advances canaries whose observation window has elapsed
-   (`observing → promoting → promoted`).
-3. **Audit** — writes audit log entries for every state transition.
 
 ---
 
@@ -312,7 +290,7 @@ Primary record of an LLM interaction.
 | prompt       | TEXT    | JSON array of ChatMessage       |
 | response     | TEXT    | JSON, provider-specific shape   |
 | model        | TEXT    | e.g. "gpt-4o", "claude-3.5-sonnet" |
-| provider     | TEXT    | "openai", "anthropic", "google", "opencode", etc. |
+| provider     | TEXT    | "openai", "anthropic", "google" |
 | cost_cents   | REAL    | Cost in cents                   |
 | latency_ms   | INTEGER | End-to-end latency              |
 | metadata     | TEXT    | JSON bag for caller context     |
@@ -457,8 +435,8 @@ after generation.
 
 ### Backtest orchestration
 
-The `backtest()` function in `packages/mode-backtest` chains the full
-pipeline in one call:
+The quality eval pipeline (`gatelane eval`, powered by `packages/source-prod-slice`
+and `packages/gatelane-engine`) chains the full pipeline in one call:
 
 1. Parse a human-readable window string (e.g. `"7d"`, `"24h"`, `"30m"`)
 2. `freezeSlice` -- snapshot captures from that window into a dataset

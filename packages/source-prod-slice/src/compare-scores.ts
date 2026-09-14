@@ -8,7 +8,7 @@
  */
 
 import type { JudgeStabilityMatrix } from '@lanefoundry/gatelane-sdk';
-import type { ReplayResult } from '@lanefoundry/gatelane-engine';
+import type { ReplayResult, ReplayRow } from '@lanefoundry/gatelane-engine';
 import type { JudgeVerdict } from '@lanefoundry/gatelane-engine';
 import { compare, type CandidateMetric } from '@lanefoundry/gatelane-engine';
 

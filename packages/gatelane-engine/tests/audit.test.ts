@@ -185,6 +185,7 @@ describe('audit', () => {
           'run-123',
           eventType,
           { data: 'test' },
+          SIGNING_KEY,
           mockDb as unknown as D1DatabaseLike
         );
         expect(entry.event_type).toBe(eventType);

@@ -83,7 +83,7 @@ export function injectionMetaOf(itemId: string): { category: InjectionCategory; 
 /**
  * Helper: freeze the payloads into a gatelane Dataset compatible with
  * `freezeDataset()` / `runGate()`.
- * Returns a proper content-addressed FrozenDataset with source_kind='redteam'.
+ * Returns a proper content-addressed FrozenDataset with source_kind='scan'.
  */
 export async function freezeInjectionDataset(): Promise<FrozenDataset> {
   const items: DatasetItem[] = INJECTION_PAYLOADS.map((p) => ({
@@ -92,7 +92,7 @@ export async function freezeInjectionDataset(): Promise<FrozenDataset> {
     mapped_asi: p.mapped_asi,
   }));
   return freezeDataset({
-    source_kind: 'redteam',
+    source_kind: 'scan',
     source_ref: 'gatelane-hand-curated@0.0.1',
     items,
   });

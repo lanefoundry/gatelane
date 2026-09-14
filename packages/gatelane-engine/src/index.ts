@@ -16,5 +16,4 @@ export * from './audit.js';
 export * from './tracing.js';
 export * from './runner.js';
 export * from './attack.js';
-export * from './redteam.js';
-export * from './otel-export.js';
+export * from './scan.js';

@@ -76,7 +76,7 @@ node packages/cli/dist/cli.js gate \
   --candidate model:gpt-5 \
   --candidate guardrail:input-filter-v2 \
   --judges gpt-4o,claude-sonnet \
-  --dataset-source redteam
+  --dataset-source scan
 ```
 
 ## Week 1.5 (engine): Real replay, judge, sign
@@ -129,13 +129,13 @@ Run 20 prompt injection attacks (pinj-001..pinj-005, pesc-001..pesc-005, cinj-00
 packages/gatelane-engine/
 ├── src/
 │   ├── attack.ts            — 20 hand-curated injection payloads + freezeInjectionDataset()
-│   └── redteam.ts           — AttackReport + buildAttackReport + verifyPatchHolds
-└── tests/attack.test.ts     — red-team dataset + attack report + patch-verify tests
+│   └── scan.ts              — AttackReport + buildAttackReport + verifyPatchHolds
+└── tests/attack.test.ts     — scan dataset + attack report + patch-verify tests
 ```
 
 ### Acceptance
 
-- [x] freezeInjectionDataset(): 20 payloads, source_kind=redteam, content-addressed via SDK freezeDataset
+- [x] freezeInjectionDataset(): 20 payloads, source_kind=scan, content-addressed via SDK freezeDataset
 - [x] Each payload mapped to OWASP Agentic Top 10 (ASI01/02/03/05)
 - [x] buildAttackReport(): per-candidate survival rate + vulnerabilities + per-ASI gaps
 - [x] verifyPatchHolds(): resolved / regressed / holds semantics
@@ -187,7 +187,7 @@ apps/dashboard/
 
 - [ ] gatelane head-to-head coding agent attack report (public, 4 agents)
 - [ ] looplane vulnerability list (private, internal use)
-- [ ] looplane patch validated via Mode B backtest
+- [ ] looplane patch validated via `gatelane eval`
 - [ ] At least 1 promotion-gate cycle from canary → promote/rollback
 
 ## v0.2 — Production monitoring + canary
