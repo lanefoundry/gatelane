@@ -281,10 +281,21 @@ pnpm test             # run tests (vitest)
 - [Distribution](docs/distribution.md) — npm / PyPI / Docker / package managers
 - [SDK parity](docs/sdk-parity.md) — TypeScript / Python feature parity
 
+## Full lifecycle
+
+gatelane covers pre-deploy, deploy, and post-deploy:
+
+```
+Pre-deploy    scan → eval → pass/block           ✅ v0.1
+Deploy        canary (10% → observe → promote)   🔜 v0.2
+Post-deploy   monitor → alert → auto-re-scan     🔜 v0.2
+```
+
+v0.2 adds production monitoring — the same engine that runs pre-deploy scan/eval also monitors live traffic: quality regression alerts, attack detection on production traces, cost/latency anomaly detection, judge-drift alerts. See [roadmap](docs/roadmap.md) for details.
+
 ## What this is NOT
 
 - **Not a general LLM gateway.** Use OpenRouter / LiteLLM for routing.
-- **Not a pure APM.** Use Datadog / Langfuse / Honeycomb for full observability. gatelane exports OTel traces to them.
 - **Not a workflow control plane.** The gate runs **on top of** whichever runtime you use.
 - **Not a hosted service.** Self-host on your Cloudflare account, or run fully local without a Worker.
 
