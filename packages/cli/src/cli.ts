@@ -47,7 +47,6 @@ import {
   verifyPatchHolds,
   type LLMCaller,
   type AttackReport,
-  type CandidateAttackSummary,
   type ScanReplayRow,
   exportTurnsToOTel,
   type OTelExportConfig,
@@ -771,10 +770,9 @@ async function cmdEval(argv: ReadonlyArray<string>): Promise<number> {
           const cdScore = cdVerdict?.score ?? 0;
           const delta = cdScore - blScore;
           let status: string;
-          let indicator: string;
-          if (delta > 0.05) { status = 'improved'; indicator = '▲'; improved++; }
-          else if (delta < -0.05) { status = 'regressed'; indicator = '▼'; regressed++; }
-          else { status = 'unchanged'; indicator = '='; unchanged++; }
+          if (delta > 0.05) { status = 'improved'; improved++; }
+          else if (delta < -0.05) { status = 'regressed'; regressed++; }
+          else { status = 'unchanged'; unchanged++; }
 
           const dsItem = dataset.items?.find((it) => (it.id ?? '<anonymous>') === itemId);
           const inputText = typeof dsItem?.input === 'string' ? dsItem.input : JSON.stringify(dsItem?.input ?? '');
