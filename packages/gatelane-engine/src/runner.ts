@@ -24,7 +24,7 @@ import type { GateReport } from '@lanefoundry/gatelane-sdk/promotion';
 import { shaOfCandidateRef } from '@lanefoundry/gatelane-sdk';
 import { DEFAULT_POLICY } from '@lanefoundry/gatelane-sdk';
 
-import type { LLMCaller, LLMRequest } from './llm.js';
+import { parseProviderModel, type LLMCaller, type LLMRequest } from './llm.js';
 import { replay, type ReplayArgs } from './replay.js';
 import { LLMJudge, type JudgeVerdict } from './judge.js';
 import { compare } from './compare.js';
@@ -80,11 +80,10 @@ export function createRunner(opts: RunnerOptions): GateRunner {
     const reportId = crypto.randomUUID();
     const scorerCodeSha = await shaOfCandidateRef(`gatelane-engine:scorer:v0.0.1-dev`);
 
-    const candidates = args.candidates.map((ref) => ({
-      ref,
-      model: ref.startsWith('model:') ? ref.slice('model:'.length) : ref,
-      messages_from_item,
-    }));
+    const candidates = args.candidates.map((ref) => {
+      const { model } = parseProviderModel(ref, 'mock');
+      return { ref, model, messages_from_item };
+    });
 
     // Stage 1: Replay
     const replayArgs: ReplayArgs = {

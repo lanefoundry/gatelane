@@ -1,0 +1,22 @@
+{
+  "name": "@lanefoundry/gatelane-ci-adapter",
+  "version": "0.0.0-dev",
+  "description": "CI/CD adapter for gatelane — parses gate output for GitHub Actions.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "gatelane-ci": "./dist/action.js"
+  },
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@lanefoundry/gatelane-sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.4"
+  }
+}

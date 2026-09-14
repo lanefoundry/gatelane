@@ -48,6 +48,7 @@ candidates:
   - openai:gpt-4o
   - groq:llama-3.1-70b-versatile
   - google:gemini-2.5-flash
+  - opencode:deepseek-v4-flash
 
 judges:
   - openai:gpt-4o
@@ -64,6 +65,7 @@ Add API keys to `.env` (auto-loaded, no `export` needed):
 OPENAI_API_KEY=sk-...
 GROQ_API_KEY=gsk_...
 GOOGLE_API_KEY=AIza...
+OPENCODE_API_KEY=...
 ```
 
 ### 2. Run a security scan
@@ -131,10 +133,11 @@ npx gatelane run --dataset my-dataset.json
 | Groq | `GROQ_API_KEY` | OpenAI-compatible (fast inference) | Yes |
 | OpenRouter | `OPENROUTER_API_KEY` | OpenAI-compatible (multi-model gateway) | Yes |
 | Cloudflare Workers AI | `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` | OpenAI-compatible | Yes |
+| OpenCode Zen | `OPENCODE_API_KEY` | OpenAI-compatible (64 models incl. GPT, Claude, Gemini, DeepSeek, Qwen, Kimi, GLM) | Yes |
 | Ollama | `OLLAMA_BASE_URL` (optional) | OpenAI-compatible (local, default `localhost:11434`) | No |
 | Mock | — | Deterministic, for testing | No |
 
-Candidates embed their provider: `--candidate groq:llama-3.1-70b-versatile`
+Candidates embed their provider: `--candidate groq:llama-3.1-70b-versatile`, `--candidate opencode:deepseek-v4-flash`
 
 ## Workflow
 

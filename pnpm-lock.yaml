@@ -82,6 +82,19 @@ importers:
         specifier: ^4.5.0
         version: 4.13.5
 
+  packages/ci-adapter:
+    dependencies:
+      '@lanefoundry/gatelane-sdk':
+        specifier: workspace:*
+        version: link:../gatelane-sdk
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.1
+      typescript:
+        specifier: ^5.5.4
+        version: 5.9.3
+
   packages/cli:
     dependencies:
       '@lanefoundry/gatelane-engine':
@@ -90,6 +103,9 @@ importers:
       '@lanefoundry/gatelane-sdk':
         specifier: workspace:*
         version: link:../gatelane-sdk
+      '@lanefoundry/source-prod-slice':
+        specifier: workspace:*
+        version: link:../source-prod-slice
       dotenv:
         specifier: ^17.4.2
         version: 17.4.2
@@ -3881,14 +3897,6 @@ snapshots:
       chai: 5.3.3
       tinyrainbow: 1.2.0
 
-  '@vitest/mocker@2.1.9(vite@5.4.21(@types/node@22.20.1))':
-    dependencies:
-      '@vitest/spy': 2.1.9
-      estree-walker: 3.0.3
-      magic-string: 0.30.21
-    optionalDependencies:
-      vite: 5.4.21(@types/node@22.20.1)
-
   '@vitest/mocker@2.1.9(vite@5.4.21(@types/node@26.4.1))':
     dependencies:
       '@vitest/spy': 2.1.9
@@ -4939,7 +4947,7 @@ snapshots:
   vitest@2.1.9(@types/node@22.20.1):
     dependencies:
       '@vitest/expect': 2.1.9
-      '@vitest/mocker': 2.1.9(vite@5.4.21(@types/node@22.20.1))
+      '@vitest/mocker': 2.1.9(vite@5.4.21(@types/node@26.4.1))
       '@vitest/pretty-format': 2.1.9
       '@vitest/runner': 2.1.9
       '@vitest/snapshot': 2.1.9

@@ -14,6 +14,7 @@
   "dependencies": {
     "@lanefoundry/gatelane-engine": "workspace:*",
     "@lanefoundry/gatelane-sdk": "workspace:*",
+    "@lanefoundry/source-prod-slice": "workspace:*",
     "dotenv": "^17.4.2",
     "yaml": "^2.9.1",
     "zod": "^4.6.5"

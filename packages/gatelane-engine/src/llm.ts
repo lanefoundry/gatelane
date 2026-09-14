@@ -172,9 +172,52 @@ function approxTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
+type NormalizedResponse = {
+  choices: Array<{ message: { content: string; role: string }; finish_reason: string }>;
+  usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+};
+
+/**
+ * Normalize various response shapes to the OpenAI Chat Completions format.
+ *
+ * Handles:
+ * - Standard OpenAI: { choices: [...] }
+ * - CF wrapped:      { success: true, result: { choices: [...] } }
+ * - CF legacy:       { result: { response: "text" } }
+ * - CF legacy alt:   { result: "text" }
+ */
+function normalizeOpenAIResponse(raw: Record<string, unknown>): NormalizedResponse {
+  // Standard OpenAI format — choices at top level
+  if (Array.isArray(raw.choices) && raw.choices.length > 0) {
+    return raw as unknown as NormalizedResponse;
+  }
+
+  // Cloudflare wrapped — { success, result: { choices: [...] } } or { result: { response } }
+  const result = raw.result as Record<string, unknown> | string | undefined;
+  if (result !== undefined) {
+    // result is a string — legacy CF format
+    if (typeof result === 'string') {
+      return { choices: [{ message: { content: result, role: 'assistant' }, finish_reason: 'stop' }] };
+    }
+
+    // result has choices — CF-wrapped OpenAI format
+    if (typeof result === 'object' && result !== null && Array.isArray(result.choices)) {
+      return result as unknown as NormalizedResponse;
+    }
+
+    // result.response is a string — legacy CF REST format
+    if (typeof result === 'object' && result !== null && typeof result.response === 'string') {
+      return { choices: [{ message: { content: result.response, role: 'assistant' }, finish_reason: 'stop' }] };
+    }
+  }
+
+  // Unknown format — return empty so content falls through to ''
+  return { choices: [] };
+}
+
 /**
  * OpenAI Chat Completions API caller.
- * Also used for OpenAI-compatible providers (groq, openrouter, cloudflare workers ai).
+ * Also used for OpenAI-compatible providers (groq, openrouter, cloudflare workers ai, opencode).
  */
 export class OpenAIChatCaller implements LLMCaller {
   readonly provider: string;
@@ -269,16 +312,21 @@ export class OpenAIChatCaller implements LLMCaller {
       };
     }
 
-    const data = (await response.json()) as {
-      choices: Array<{
-        message: { content: string; role: string };
-        finish_reason: string;
-      }>;
-      usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
-    };
+    const rawJson = (await response.json()) as Record<string, unknown>;
+
+    // Normalize response: Cloudflare Workers AI REST API may wrap the
+    // OpenAI-compatible response inside { success, result: { ... } },
+    // or return the legacy format { result: { response: "text" } }.
+    const data = normalizeOpenAIResponse(rawJson);
 
     const choice = data.choices[0];
-    const content = choice?.message?.content ?? '';
+    // Cast to Record to access reasoning_content/reasoning (not in NormalizedResponse type)
+    const msg = choice?.message as Record<string, unknown> | undefined;
+    const content =
+      (msg?.content as string) ||
+      (msg?.reasoning_content as string) ||
+      (msg?.reasoning as string) ||
+      '';
     const tokens_in = data.usage?.prompt_tokens ?? approxTokens(request.messages.map((m) => m.content).join(''));
     const tokens_out = data.usage?.completion_tokens ?? approxTokens(content);
     const cost_usd = estimateCost(model, tokens_in, tokens_out, this.pricing);
@@ -291,7 +339,7 @@ export class OpenAIChatCaller implements LLMCaller {
       tokens_in,
       tokens_out,
       finish_reason: finish_reason as LLMResponse['finish_reason'],
-      raw: data,
+      raw: rawJson,
       toCapturedCall: ({ id, started_at, completed_at, span_kind }) => ({
         id,
         input: {
@@ -607,6 +655,11 @@ export const PROVIDER_REGISTRY: Record<string, {
     envKey: 'CLOUDFLARE_API_TOKEN',
     baseURL: '',
     defaultModel: '@cf/meta/llama-3.1-8b-instruct',
+  },
+  opencode: {
+    envKey: 'OPENCODE_API_KEY',
+    baseURL: 'https://opencode.ai/zen/v1',
+    defaultModel: 'deepseek-v4-flash',
   },
   ollama: {
     envKey: 'OLLAMA_API_KEY',

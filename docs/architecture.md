@@ -82,7 +82,10 @@ apps/worker              (depends on shared + engine + hono)
 | `packages/engine`        | `@gatelane/engine`     | Core primitives: capture, dataset, replay, compare, promotion, audit log |
 | `packages/mode-backtest` | `@gatelane/mode-backtest` | Orchestrates freeze-replay-promote in one call      |
 | `packages/mode-red-team` | `@gatelane/mode-red-team` | Adversarial attack vectors and reporting types       |
-| `apps/worker`            | `@gatelane/worker`     | Cloudflare Worker; Hono HTTP server                   |
+| `packages/source-prod-slice` | `@lanefoundry/source-prod-slice` | Production slice: freeze, replay-batch, canary orchestrator, signed reports, audit export |
+| `packages/ci-adapter`    | `@lanefoundry/gatelane-ci-adapter` | CI/CD adapter: parse gate output → GitHub Actions outputs/exit codes |
+| `apps/worker`            | `@gatelane/worker`     | Cloudflare Worker; Hono HTTP server + scheduled canary handler |
+| `apps/dashboard`         | `@gatelane/dashboard`  | React + Vite dashboard (7 pages: captures, datasets, replay runs, promotions, canary, red team, audit log) |
 
 ### Engine exports
 
@@ -244,6 +247,7 @@ Request body:
 
 | Method | Path                  | Description                         |
 |--------|-----------------------|-------------------------------------|
+| GET    | `/v1/captures`        | List captures (filter: since, model, limit) |
 | GET    | `/v1/datasets`        | List datasets (most recent 50)      |
 | GET    | `/v1/datasets/:id`    | Get single dataset                  |
 | GET    | `/v1/replay-runs`     | List replay runs (most recent 50)   |
@@ -254,6 +258,28 @@ Request body:
 
 All query endpoints return JSON. No authentication is currently enforced
 on read endpoints.
+
+### Canary
+
+| Method | Path                          | Auth         | Description                                   |
+|--------|-------------------------------|--------------|-----------------------------------------------|
+| GET    | `/v1/canaries`                | —            | List canary deployments (filter: state, limit) |
+| GET    | `/v1/canaries/:id`            | —            | Get single canary record                      |
+| POST   | `/v1/canaries`                | Bearer token | Start a canary deployment                     |
+| POST   | `/v1/canaries/:id/observe`    | Bearer token | Record a metric observation                   |
+| POST   | `/v1/canaries/:id/advance`    | Bearer token | Advance the canary state machine              |
+| POST   | `/v1/canaries/:id/rollback`   | Bearer token | Manual rollback with reason                   |
+
+### Scheduled handler (cron)
+
+The Worker runs a scheduled handler every 5 minutes (`*/5 * * * *`) that:
+
+1. **Auto-observe** — collects error rate, avg latency, and avg cost from
+   recent captures for each active canary, and records observations.
+   Triggers auto-rollback if a metric breaches the policy threshold.
+2. **Tick** — advances canaries whose observation window has elapsed
+   (`observing → promoting → promoted`).
+3. **Audit** — writes audit log entries for every state transition.
 
 ---
 
@@ -286,7 +312,7 @@ Primary record of an LLM interaction.
 | prompt       | TEXT    | JSON array of ChatMessage       |
 | response     | TEXT    | JSON, provider-specific shape   |
 | model        | TEXT    | e.g. "gpt-4o", "claude-3.5-sonnet" |
-| provider     | TEXT    | "openai", "anthropic", "google" |
+| provider     | TEXT    | "openai", "anthropic", "google", "opencode", etc. |
 | cost_cents   | REAL    | Cost in cents                   |
 | latency_ms   | INTEGER | End-to-end latency              |
 | metadata     | TEXT    | JSON bag for caller context     |

@@ -1,0 +1,46 @@
+# Example: gatelane as a CI/CD gate in GitHub Actions
+#
+# This workflow runs gatelane scan + eval on every push,
+# then uses the CI adapter to set outputs and fail the build
+# if the gate decision is "rollback".
+#
+# Prerequisites:
+#   1. Add API keys as repository secrets (OPENAI_API_KEY, etc.)
+#   2. Create a gatelane.config.yaml in your repo root
+#   3. Optionally add a frozen dataset (my-dataset.json)
+
+name: gatelane gate
+
+on: [push]
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install gatelane
+        run: npm install -g @lanefoundry/gatelane-cli
+
+      - name: Run gate (scan + eval)
+        run: npx gatelane run --report report.json
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+      - name: Parse gate decision
+        id: gate
+        run: node packages/ci-adapter/dist/action.js
+        env:
+          GATELANE_REPORT_PATH: report.json
+
+      - name: Gate result
+        if: always()
+        run: |
+          echo "Decision: ${{ steps.gate.outputs.GATELANE_DECISION }}"
+          echo "Winner: ${{ steps.gate.outputs.GATELANE_WINNER }}"
+          echo "Reason: ${{ steps.gate.outputs.GATELANE_REASON }}"

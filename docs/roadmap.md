@@ -209,8 +209,10 @@ Post-deploy:  monitor → alert → auto-re-scan       ← v0.2
 - [ ] **Attack detection**: run scan vectors against live traffic patterns — detect prompt injection attempts in real-time, not just in pre-deploy testing
 - [ ] **Cost/latency anomaly alerts**: detect spikes in token usage, cost, or latency that indicate model degradation or abuse
 - [ ] **Judge-drift alerts**: detect when judge scoring behavior drifts over time (judge model updated, scoring distribution shifts)
-- [ ] **Canary orchestrator CLI**: `gatelane canary` — wire the existing canary state machine (10% → 24h observe → promote/rollback) into the CLI, with live metric ingestion from production traces
-- [ ] **Dashboard**: production monitoring view — live traces, alert history, canary status, quality trend charts
+- [x] **Canary orchestrator CLI**: `gatelane canary` — wire the existing canary state machine (10% → 24h observe → promote/rollback) into the CLI, with live metric ingestion from production traces
+- [x] **Dashboard**: production monitoring view — live traces, alert history, canary status, quality trend charts
+- [x] **Scheduled auto-observe**: Cloudflare cron trigger (every 5 min) collects error rate / latency / cost from captures, feeds into active canaries, auto-rollback on threshold breach
+- [x] **CI/CD adapter**: `@lanefoundry/gatelane-ci-adapter` — parse gate output → GitHub Actions outputs / exit codes / step summary
 
 ### Other v0.2 items
 

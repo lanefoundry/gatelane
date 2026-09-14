@@ -4,6 +4,7 @@ import { CapturesPage } from "./pages/Captures";
 import { DatasetsPage } from "./pages/Datasets";
 import { ReplayRunsPage } from "./pages/ReplayRuns";
 import { PromotionsPage } from "./pages/Promotions";
+import { CanaryPage } from "./pages/Canary";
 import { RedTeamPage } from "./pages/RedTeam";
 import { AuditLogPage } from "./pages/AuditLog";
 
@@ -25,6 +26,7 @@ function Router() {
     case "#datasets": return <DatasetsPage />;
     case "#replay-runs": return <ReplayRunsPage />;
     case "#promotions": return <PromotionsPage />;
+    case "#canary": return <CanaryPage />;
     case "#red-team": return <RedTeamPage />;
     case "#audit-log": return <AuditLogPage />;
     default: return <CapturesPage />;

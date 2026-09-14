@@ -116,7 +116,7 @@ The gap between "every product has dataset + replay + compare" and "promotion ga
 | Hyperscaler | Bedrock / Vertex / Foundry | Don't compete — only inside their cloud |
 | Production gateway | Portkey (PANW), Cloudflare AI GW, Vercel AI GW | Don't compete — adjacent, not core |
 
-The 22+ credible AI gateway options already cover the routing / caching / pricing-database / key-management layer. Building our own would be 6-8 weeks of duplicative work for marginal differentiation. **We will plug into these, not replace them.** gatelane's capture SDK reads whatever the agent called; the model provider is an attribute, not a product decision.
+The 22+ credible AI gateway options (OpenRouter, LiteLLM, OpenCode Zen, Bifrost, etc.) already cover the routing / caching / pricing-database / key-management layer. Building our own would be 6-8 weeks of duplicative work for marginal differentiation. **We will plug into these, not replace them.** gatelane's capture SDK reads whatever the agent called; the model provider is an attribute, not a product decision.
 
 ## Threat model scope (v1)
 

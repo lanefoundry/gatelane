@@ -20,6 +20,19 @@ import {
   type FrozenDataset,
 } from '@lanefoundry/gatelane-sdk';
 
+import {
+  startCanary,
+  recordObservation,
+  advanceCanary,
+  rollbackCanary,
+  tickCanaries,
+  getActiveCanaries,
+  getCanaryStorage,
+  InMemoryCanaryStorage,
+  setCanaryStorage,
+  type CanaryRecord,
+} from '@lanefoundry/source-prod-slice';
+
 import { freezeInjectionDataset } from '@lanefoundry/gatelane-engine/attack';
 import {
   createRunner,
@@ -49,6 +62,7 @@ Usage:
   gatelane eval [options]             Quality evaluation (backtest promotion gate)
   gatelane run [options]              Full pipeline (scan + eval)
   gatelane snapshot [options]         Snapshot production traffic into a dataset
+  gatelane canary <subcommand>       Canary deployment management
   gatelane init                       Create a starter gatelane.config.yaml
   gatelane --help
 
@@ -96,9 +110,17 @@ Snapshot options:
   --endpoint <url>        Worker endpoint URL
   --token <token>         Capture API token
 
+Canary subcommands:
+  gatelane canary start --report <path>                   Start canary from report JSON
+  gatelane canary status [--id <id>]                      Show canary status or list all
+  gatelane canary observe --id <id> --metric <n> --value <n> --baseline <n>
+  gatelane canary advance --id <id>                       Advance canary state machine
+  gatelane canary rollback --id <id> --reason <text>      Manual rollback
+  gatelane canary tick                                    Advance all eligible canaries
+
 Providers: ${SUPPORTED_PROVIDERS}
 
-v0.4.0 — scan + eval + run.
+v0.5.0 — scan + eval + run + canary + CI/CD adapter.
 `;
 
 // ── Config schema (zod) ──────────────────────────────────────────────
@@ -934,6 +956,7 @@ candidates:
   # - google:gemini-2.5-flash
   # - openrouter:mistralai/mistral-large-latest
   # - cloudflare:@cf/meta/llama-3.1-8b-instruct
+  # - opencode:deepseek-v4-flash
   # - ollama:llama3.1
 
 judges:
@@ -960,6 +983,179 @@ threshold: 0.02
   return 0;
 }
 
+// ── canary ──────────────────────────────────────────────────────────
+
+function printCanaryRecord(record: CanaryRecord): void {
+  process.stderr.write(`\n  canary:     ${record.id}\n`);
+  process.stderr.write(`  state:      ${record.state}\n`);
+  process.stderr.write(`  candidate:  ${record.candidateRef}\n`);
+  process.stderr.write(`  traffic:    ${record.trafficPercent}%\n`);
+  process.stderr.write(`  started:    ${record.startedAt}\n`);
+  if (record.observationEndsAt) process.stderr.write(`  observe til: ${record.observationEndsAt}\n`);
+  if (record.completedAt) process.stderr.write(`  completed:  ${record.completedAt}\n`);
+  if (record.error) process.stderr.write(`  error:      ${record.error}\n`);
+  if (record.observations.length > 0) {
+    process.stderr.write(`  observations: ${record.observations.length}\n`);
+  }
+}
+
+async function cmdCanary(argv: ReadonlyArray<string>): Promise<number> {
+  const { positional, multi } = parseArgs(argv);
+  const subcommand = positional[0];
+
+  if (!subcommand) {
+    process.stderr.write('error: canary requires a subcommand: start | status | observe | advance | rollback | tick\n');
+    return 2;
+  }
+
+  setCanaryStorage(new InMemoryCanaryStorage());
+
+  switch (subcommand) {
+    case 'start': {
+      const reportPath = multi['report']?.[0];
+      if (!reportPath) {
+        process.stderr.write('error: --report <path> is required for canary start\n');
+        return 2;
+      }
+
+      const raw = JSON.parse(await readFile(resolve(reportPath), 'utf-8')) as Record<string, unknown>;
+      const report = raw.report ?? raw;
+      const decision = (raw.decision ?? { action: 'promote', winner: '', reason: '' }) as { action: string; winner?: string; reason: string };
+
+      if (decision.action !== 'promote') {
+        process.stderr.write(`error: cannot start canary — decision is "${decision.action}", expected "promote"\n`);
+        return 1;
+      }
+
+      const gateRunId = (report as Record<string, unknown>).gate_run_id as string ?? `cli-${Date.now()}`;
+      const candidateRef = decision.winner ?? 'unknown';
+
+      process.stderr.write('\n  mode:       canary start\n');
+      process.stderr.write(`  report:     ${reportPath}\n`);
+      process.stderr.write(`  candidate:  ${candidateRef}\n`);
+      process.stderr.write(`  gate run:   ${gateRunId}\n\n`);
+
+      const result = await startCanary({
+        gateRunId,
+        candidateRef,
+        report: report as Parameters<typeof startCanary>[0]['report'],
+        decision: decision as Parameters<typeof startCanary>[0]['decision'],
+        initialTrafficPercent: Number(multi['traffic']?.[0] ?? 10),
+        observationWindow: multi['window']?.[0],
+      });
+
+      printCanaryRecord(result.record);
+      process.stdout.write(JSON.stringify({ canary_id: result.record.id, state: result.record.state }, null, 2) + '\n');
+      return 0;
+    }
+
+    case 'status': {
+      const id = multi['id']?.[0];
+
+      if (id) {
+        const record = await getCanaryStorage().read(id);
+        if (!record) {
+          process.stderr.write(`error: canary not found: ${id}\n`);
+          return 1;
+        }
+        printCanaryRecord(record);
+        process.stdout.write(JSON.stringify(record, null, 2) + '\n');
+      } else {
+        const active = await getActiveCanaries();
+        const all = await getCanaryStorage().list({ limit: 20 });
+
+        process.stderr.write(`\n  canaries: ${all.length} total, ${active.length} active\n\n`);
+
+        if (all.length > 0) {
+          printTable(
+            ['ID', 'State', 'Candidate', 'Traffic', 'Started', 'Observation Ends'],
+            all.map((r) => [
+              r.id,
+              r.state,
+              r.candidateRef,
+              `${r.trafficPercent}%`,
+              r.startedAt.slice(0, 19),
+              r.observationEndsAt?.slice(0, 19) ?? '-',
+            ]),
+          );
+        }
+      }
+      return 0;
+    }
+
+    case 'observe': {
+      const id = multi['id']?.[0];
+      const metric = multi['metric']?.[0];
+      const value = multi['value']?.[0];
+      const baseline = multi['baseline']?.[0];
+
+      if (!id || !metric || !value || !baseline) {
+        process.stderr.write('error: canary observe requires --id, --metric, --value, --baseline\n');
+        return 2;
+      }
+
+      const result = await recordObservation(id, metric, Number(value), Number(baseline));
+      printCanaryRecord(result.record);
+
+      if (result.record.state === 'rolled_back') {
+        process.stderr.write('\n  ✗ AUTO-ROLLBACK triggered\n');
+      }
+
+      process.stdout.write(JSON.stringify({ state: result.record.state, advanced: result.advanced }, null, 2) + '\n');
+      return result.record.state === 'rolled_back' ? 1 : 0;
+    }
+
+    case 'advance': {
+      const id = multi['id']?.[0];
+      if (!id) {
+        process.stderr.write('error: --id is required for canary advance\n');
+        return 2;
+      }
+
+      const result = await advanceCanary(id);
+      printCanaryRecord(result.record);
+      process.stdout.write(JSON.stringify({ state: result.record.state, advanced: result.advanced }, null, 2) + '\n');
+      return 0;
+    }
+
+    case 'rollback': {
+      const id = multi['id']?.[0];
+      const reason = multi['reason']?.[0];
+      if (!id || !reason) {
+        process.stderr.write('error: canary rollback requires --id and --reason\n');
+        return 2;
+      }
+
+      const result = await rollbackCanary(id, reason);
+      printCanaryRecord(result.record);
+      process.stderr.write('\n  ✗ Canary rolled back\n');
+      process.stdout.write(JSON.stringify({ state: result.record.state }, null, 2) + '\n');
+      return 0;
+    }
+
+    case 'tick': {
+      const changed = await tickCanaries();
+      process.stderr.write(`\n  canary tick: ${changed.length} canaries advanced\n`);
+
+      for (const record of changed) {
+        printCanaryRecord(record);
+      }
+
+      if (changed.length === 0) {
+        process.stderr.write('  (no canaries ready to advance)\n');
+      }
+
+      process.stdout.write(JSON.stringify({ advanced: changed.length, records: changed.map((r) => ({ id: r.id, state: r.state })) }, null, 2) + '\n');
+      return 0;
+    }
+
+    default:
+      process.stderr.write(`error: unknown canary subcommand: ${subcommand}\n`);
+      process.stderr.write('  valid subcommands: start | status | observe | advance | rollback | tick\n');
+      return 2;
+  }
+}
+
 // ── Main ─────────────────────────────────────────────────────────────
 
 async function main(argv: ReadonlyArray<string>): Promise<number> {
@@ -979,6 +1175,7 @@ async function main(argv: ReadonlyArray<string>): Promise<number> {
   if (command === 'eval') return cmdEval(argv.slice(1));
   if (command === 'run') return cmdRun(argv.slice(1));
   if (command === 'snapshot') return cmdSnapshot(argv.slice(1));
+  if (command === 'canary') return cmdCanary(argv.slice(1));
   if (command === 'init') return cmdInit();
   // Backwards compat aliases
   if (command === 'gate') return cmdEval(argv.slice(1));

@@ -5,6 +5,11 @@ const COLORS: Record<string, { bg: string; text: string }> = {
   failed: { bg: "#fee2e2", text: "#991b1b" },
   promote: { bg: "#dcfce7", text: "#166534" },
   rollback: { bg: "#fee2e2", text: "#991b1b" },
+  canary: { bg: "#dbeafe", text: "#1e40af" },
+  observing: { bg: "#dbeafe", text: "#1e40af" },
+  promoting: { bg: "#fef9c3", text: "#854d0e" },
+  promoted: { bg: "#dcfce7", text: "#166534" },
+  rolled_back: { bg: "#fee2e2", text: "#991b1b" },
 };
 
 export function StatusBadge({ status }: { status: string }) {
