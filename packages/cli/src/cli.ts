@@ -36,6 +36,8 @@ import {
   type AttackReport,
   type CandidateAttackSummary,
   type ScanReplayRow,
+  exportTurnsToOTel,
+  type OTelExportConfig,
 } from '@lanefoundry/gatelane-engine';
 
 const SUPPORTED_PROVIDERS = ['mock', ...Object.keys(PROVIDER_REGISTRY)].join('|');
@@ -115,6 +117,11 @@ const configSchema = z.object({
   report: z.string().optional(),
   signing_key: z.string().optional(),
   format: z.enum(['json', 'table']).optional(),
+  export: z.object({
+    otlp_endpoint: z.string(),
+    otlp_headers: z.record(z.string(), z.string()).optional(),
+    service_name: z.string().optional(),
+  }).optional(),
 }).strict();
 
 type GatelaneConfig = z.infer<typeof configSchema>;
@@ -314,6 +321,39 @@ async function saveTrace(name: string, json: string): Promise<string> {
   const tracePath = join(traceDir, `${name}-${crypto.randomUUID().slice(0, 8)}.json`);
   await writeFile(tracePath, json, 'utf-8');
   return tracePath;
+}
+
+/** Export turns to OTLP backend if configured. */
+async function maybeExportOTel(
+  config: GatelaneConfig,
+  replayRows: ReadonlyArray<{ response: { content: string; cost_usd: number; latency_ms: number; tokens_in?: number; tokens_out?: number } }>,
+): Promise<void> {
+  if (!config.export?.otlp_endpoint) return;
+
+  const turns = replayRows.map((row, i) => ({
+    role: 'assistant' as const,
+    content: row.response.content,
+    span_id: `row-${i}`,
+    span_kind: 'llm' as const,
+    cost_usd: row.response.cost_usd,
+    latency_ms: row.response.latency_ms,
+    tokens_in: row.response.tokens_in,
+    tokens_out: row.response.tokens_out,
+    status: 'ok' as const,
+  }));
+
+  const otelConfig: OTelExportConfig = {
+    endpoint: config.export.otlp_endpoint,
+    headers: config.export.otlp_headers,
+    service_name: config.export.service_name,
+  };
+
+  try {
+    const { exported } = await exportTurnsToOTel(turns, otelConfig);
+    process.stderr.write(`  otel: exported ${exported} spans to ${config.export.otlp_endpoint}\n`);
+  } catch (err) {
+    process.stderr.write(`  otel: export failed — ${err instanceof Error ? err.message : String(err)}\n`);
+  }
 }
 
 function resolveCommonArgs(argv: ReadonlyArray<string>, config: GatelaneConfig) {
@@ -542,6 +582,11 @@ async function cmdScan(argv: ReadonlyArray<string>): Promise<number> {
   }
   const tracePath = await saveTrace('scan', json);
   process.stderr.write(`  traces: ${tracePath}\n`);
+
+  await maybeExportOTel(config, result.replayRows.map((r) => ({
+    response: { content: r.content, cost_usd: r.cost_usd, latency_ms: r.latency_ms },
+  })));
+
   if (!reportPath) process.stdout.write(json + '\n');
 
   return 0;
@@ -682,6 +727,78 @@ async function cmdEval(argv: ReadonlyArray<string>): Promise<number> {
       if (decisionWinner) process.stderr.write(` → ${decisionWinner}`);
       if (decisionReason) process.stderr.write(` (${decisionReason})`);
       process.stderr.write('\n\n');
+
+      // Before/after diff when baseline + one candidate
+      if (baseline && candidates.length === 2) {
+        const replayRows = result.replay_rows ?? [];
+        const verdicts = result.verdicts ?? [];
+        const otherCandidate = candidates.find((c) => c !== baseline)!;
+
+        const itemIds = [...new Set(replayRows.map((r) => r.item_id))];
+        let improved = 0, unchanged = 0, regressed = 0;
+        const diffItems: Array<{ id: string; input: string; bl: string; blScore: number; cd: string; cdScore: number; delta: number; status: string }> = [];
+
+        for (const itemId of itemIds) {
+          const blRow = replayRows.find((r) => r.item_id === itemId && r.candidate_ref === baseline);
+          const cdRow = replayRows.find((r) => r.item_id === itemId && r.candidate_ref === otherCandidate);
+          const blVerdict = verdicts.find((v) => v.item_id === itemId && v.candidate_ref === baseline);
+          const cdVerdict = verdicts.find((v) => v.item_id === itemId && v.candidate_ref === otherCandidate);
+          if (!blRow || !cdRow) continue;
+
+          const blScore = blVerdict?.score ?? 0;
+          const cdScore = cdVerdict?.score ?? 0;
+          const delta = cdScore - blScore;
+          let status: string;
+          let indicator: string;
+          if (delta > 0.05) { status = 'improved'; indicator = '▲'; improved++; }
+          else if (delta < -0.05) { status = 'regressed'; indicator = '▼'; regressed++; }
+          else { status = 'unchanged'; indicator = '='; unchanged++; }
+
+          const dsItem = dataset.items?.find((it) => (it.id ?? '<anonymous>') === itemId);
+          const inputText = typeof dsItem?.input === 'string' ? dsItem.input : JSON.stringify(dsItem?.input ?? '');
+
+          diffItems.push({ id: itemId, input: inputText, bl: blRow.response.content, blScore, cd: cdRow.response.content, cdScore, delta, status });
+        }
+
+        if (diffItems.length > 0) {
+          process.stderr.write('  ── Item-by-item comparison ──\n');
+          for (const d of diffItems) {
+            const indicator = d.status === 'improved' ? '▲' : d.status === 'regressed' ? '▼' : '=';
+            process.stderr.write(`\n  [${d.id}] "${truncate(d.input, 60)}"\n`);
+            process.stderr.write(`    baseline (${baseline}):  "${truncate(d.bl, 80)}" (score: ${d.blScore.toFixed(2)})\n`);
+            process.stderr.write(`    candidate (${otherCandidate}): "${truncate(d.cd, 80)}" (score: ${d.cdScore.toFixed(2)}) ${indicator}\n`);
+          }
+          process.stderr.write(`\n  ── Summary: ${improved} improved, ${unchanged} unchanged, ${regressed} regressed ──\n\n`);
+        }
+      }
+    }
+
+    // Build diff data for JSON report
+    const diffData: Array<{ item_id: string; input: string; baseline: { content: string; score: number } | null; candidate: { content: string; score: number } | null; delta: number; status: string }> = [];
+    if (baseline && candidates.length === 2) {
+      const replayRows = result.replay_rows ?? [];
+      const verdicts = result.verdicts ?? [];
+      const otherCandidate = candidates.find((c) => c !== baseline)!;
+      const itemIds = [...new Set(replayRows.map((r) => r.item_id))];
+      for (const itemId of itemIds) {
+        const blRow = replayRows.find((r) => r.item_id === itemId && r.candidate_ref === baseline);
+        const cdRow = replayRows.find((r) => r.item_id === itemId && r.candidate_ref === otherCandidate);
+        const blVerdict = verdicts.find((v) => v.item_id === itemId && v.candidate_ref === baseline);
+        const cdVerdict = verdicts.find((v) => v.item_id === itemId && v.candidate_ref === otherCandidate);
+        const blScore = blVerdict?.score ?? 0;
+        const cdScore = cdVerdict?.score ?? 0;
+        const delta = cdScore - blScore;
+        const dsItem = dataset.items?.find((it) => (it.id ?? '<anonymous>') === itemId);
+        const inputText = typeof dsItem?.input === 'string' ? dsItem.input : JSON.stringify(dsItem?.input ?? '');
+        diffData.push({
+          item_id: itemId,
+          input: inputText,
+          baseline: blRow ? { content: truncate(blRow.response.content, 500), score: blScore } : null,
+          candidate: cdRow ? { content: truncate(cdRow.response.content, 500), score: cdScore } : null,
+          delta,
+          status: delta > 0.05 ? 'improved' : delta < -0.05 ? 'regressed' : 'unchanged',
+        });
+      }
     }
 
     const fullReport = {
@@ -711,6 +828,7 @@ async function cmdEval(argv: ReadonlyArray<string>): Promise<number> {
         tokens_in: r.response.tokens_in, tokens_out: r.response.tokens_out,
       })),
       policy: result.report.policy,
+      ...(diffData.length > 0 ? { diff: diffData } : {}),
     };
 
     const json = JSON.stringify(fullReport, null, 2);
@@ -720,6 +838,9 @@ async function cmdEval(argv: ReadonlyArray<string>): Promise<number> {
     }
     const tracePath = await saveTrace('eval', json);
     process.stderr.write(`  traces: ${tracePath}\n`);
+
+    await maybeExportOTel(config, (result.replay_rows ?? []).map((r) => ({ response: r.response })));
+
     if (!reportPath) process.stdout.write(json + '\n');
     return 0;
   } finally {
@@ -824,6 +945,13 @@ threshold: 0.02
 # baseline: openai:gpt-4o-mini  # compare against this candidate
 # report: report.json           # write report to file
 # format: table                 # or: json (default for eval)
+
+# OTel export (sends traces to Langfuse, Jaeger, Datadog, Grafana Tempo, etc.)
+# export:
+#   otlp_endpoint: https://cloud.langfuse.com/api/public/otel
+#   otlp_headers:
+#     Authorization: "Basic <base64(publicKey:secretKey)>"
+#   service_name: my-agent
 `;
 
   await writeFile(configPath, starter, 'utf-8');
