@@ -46,11 +46,10 @@ gatelane ships that primitive.
 
 | Command | What it does |
 |---|---|
-| `gatelane scan` | Security scan — attack probes against your model |
-| `gatelane eval` | Quality eval — backtest against a dataset, per-candidate metrics |
-| `gatelane run` | Full pipeline — scan + eval in one command |
-| `gatelane snapshot` | Snapshot production traffic into a dataset |
-| `gatelane init` | Create a starter `gatelane.config.yaml` |
+| `gatelane gate` | Promotion gate — replay candidates against a dataset, judge, compare to baseline, sign a report |
+| `gatelane freeze-slice` | Freeze a window of captured production traffic (`7d`, `24h`, `30d`) into a dataset file |
+
+`gate --dataset-source scan` replays the built-in attack library; `prod` replays a frozen production slice. Run `gatelane --help` for all flags. Standalone `scan` / `eval` / `run` / `snapshot` / `init` commands are planned, not implemented yet — see [roadmap](docs/roadmap.md).
 
 The attack library ships with 50+ prompt injection vectors across direct prompt injection, indirect injection via tools, chain attacks, context window flood, memory poisoning, and tool abuse. Integrates with [garak](https://github.com/NVIDIA/garak) (NVIDIA), [PyRIT](https://github.com/Azure/PyRIT) (Microsoft), and [Promptfoo](https://github.com/promptfoo/promptfoo) (OpenAI).
 
@@ -101,10 +100,9 @@ cp .env.example .env
 Set the required secrets in `.env`:
 
 ```bash
-# LLM judge for backtest scoring (pick one)
-GATELANE_JUDGE_PROVIDER=openai
-GATELANE_JUDGE_API_KEY=sk-...
-GATELANE_JUDGE_MODEL=gpt-4o
+# Provider key for the candidate / judge models (set the ones you use;
+# see .env.example for Anthropic, Google, Groq, OpenRouter, Ollama)
+OPENAI_API_KEY=sk-...
 
 # Capture API authentication (≥ 32 random chars)
 GATELANE_CAPTURE_TOKEN=$(openssl rand -hex 32)
@@ -154,40 +152,43 @@ const { response, record } = await capture(env, {
 });
 ```
 
-### Run a security scan
+### Freeze a production slice
 
 ```bash
-npx gatelane scan
+npx gatelane freeze-slice --window 7d --output dataset.jsonl \
+  --endpoint http://localhost:8787 --token "$GATELANE_CAPTURE_TOKEN"
 ```
 
-### Run a quality eval
+### Run the promotion gate
 
 ```bash
-npx gatelane eval --dataset my-dataset.json --format table
-```
+# Security scan: replay the built-in attack library (mock provider, no API key needed)
+npx gatelane gate --candidate model:gpt-5 --judges gpt-4o --dataset-source scan
 
-### Run both at once
-
-```bash
-npx gatelane run --dataset my-dataset.json
+# Quality backtest: replay a frozen production slice
+npx gatelane gate --candidate model:gpt-5 --judges gpt-4o \
+  --provider openai --judge-provider openai --dataset dataset.jsonl
 ```
 
 ## Deploy to Cloudflare
 
 ```bash
+cd apps/worker
 pnpm exec wrangler login
 pnpm exec wrangler whoami
 pnpm exec wrangler d1 create gatelane
 pnpm exec wrangler r2 bucket create gatelane-captures
 pnpm exec wrangler kv namespace create GATELANE_KV
-# paste the returned ids into wrangler.toml
+# paste the returned ids into apps/worker/wrangler.toml
+pnpm exec wrangler d1 migrations apply gatelane --remote
+cd ../..
 
 pnpm secrets:status
 pnpm secrets:setup
 pnpm run deploy
 ```
 
-Pushes to `main` automatically deploy after the CI quality job succeeds. The repository must have `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` GitHub Actions secrets, plus `GATELANE_CAPTURE_TOKEN` for post-deploy smoke.
+Deployment is manual (`pnpm run deploy`); CI does not auto-deploy yet.
 
 ## Use cases
 
@@ -195,19 +196,19 @@ Pushes to `main` automatically deploy after the CI quality job succeeds. The rep
 
 > "Are we exposed to known attack vectors? How do we know the patch worked?"
 
-Run `gatelane scan` before each release. Run `gatelane eval` after the patch to verify the new version doesn't regress on either quality **or** attack resistance.
+Run `gatelane gate --dataset-source scan` before each release. Run `gatelane gate` with a frozen dataset after the patch to verify the new version doesn't regress on either quality **or** attack resistance.
 
 ### ML / platform team at a company shipping LLM features
 
 > "Can we ship a new model version without watching the comparison view all day?"
 
-Run `gatelane eval` on every PR that touches the model config. The promotion gate routes to canary or rolls back automatically.
+Run `gatelane gate` on every PR that touches the model config. The promotion gate routes to canary or rolls back automatically.
 
 ### Coding agent team
 
 > "What if my coding agent is hijacked via prompt injection? How do I know when I've fixed it?"
 
-Run `gatelane scan` with coding-agent-specific attack vectors (tool abuse, indirect injection via code execution). Run `gatelane eval` with a frozen dataset of your agent's production traffic to verify the patch.
+Run `gatelane gate --dataset-source scan` with coding-agent-specific attack vectors (tool abuse, indirect injection via code execution). Run `gatelane gate` with a frozen dataset of your agent's production traffic to verify the patch.
 
 ### CISO / compliance officer (v2 scope)
 
@@ -242,6 +243,8 @@ pnpm format           # auto-format with Prettier
 | Method | Path | Description |
 |---|---|---|
 | POST | `/v1/capture` | Capture an LLM call (requires Bearer token) |
+| GET | `/health` | Health check |
+| GET | `/v1/captures` | List captures |
 | GET | `/v1/datasets` | List all datasets |
 | GET | `/v1/datasets/:id` | Get a dataset by ID |
 | GET | `/v1/replay-runs` | List all replay runs |
@@ -249,10 +252,15 @@ pnpm format           # auto-format with Prettier
 | GET | `/v1/promotions` | List all promotion reports |
 | GET | `/v1/promotions/:id` | Get a promotion report by ID |
 | GET | `/v1/audit-log` | List audit log entries |
+| GET / POST | `/v1/canaries` | List / create canary deployments |
+| GET | `/v1/canaries/:id` | Get a canary by ID |
+| POST | `/v1/canaries/:id/observe` | Record an observation |
+| POST | `/v1/canaries/:id/advance` | Advance the canary stage |
+| POST | `/v1/canaries/:id/rollback` | Roll back the canary |
 
 ### Dashboard
 
-The dashboard is a React + Vite app with 6 pages (Captures, Datasets, Replay Runs, Promotions, Red Team, Audit Log). To run it locally:
+The dashboard is a React + Vite app with 7 pages (Captures, Datasets, Replay Runs, Promotions, Canary, Scan, Audit Log). To run it locally:
 
 ```bash
 cd apps/dashboard
@@ -297,10 +305,9 @@ gatelane/
 │   ├── cli/                    — CLI interface (gatelane command)
 │   ├── source-prod-slice/      — production slice: freeze, replay-batch, canary, signed-report, audit-export
 │   ├── ci-adapter/             — CI/CD integration (GitHub Actions)
-│   └── shared/                 — common types, D1 schema
 ├── apps/
-│   ├── worker/                 — Cloudflare Worker (Hono, capture endpoint + replay API)
-│   └── dashboard/              — React + Vite + TanStack Query (6 pages, hash router)
+│   ├── worker/                 — Cloudflare Worker (Hono: capture, replay, canary APIs; D1 migrations)
+│   └── dashboard/              — React + Vite + TanStack Query (7 pages, hash router)
 ├── packaging/
 │   ├── homebrew/               — Homebrew formula + bump script
 │   ├── scoop/                  — Scoop manifest + bump script
@@ -340,9 +347,9 @@ gatelane/
 | Capture SDK (1-line integration) | ✅ done (2026-09-03) |
 | Shared engine (dataset / replay / compare / audit-log / promotion) | ✅ done (2026-09-03) |
 | Worker API (capture endpoint + replay API) | ✅ done (2026-09-03) |
-| Security scan (50+ attacks) | ✅ done (2026-09-03) — 6 categories, 50+ vectors, runner, report |
-| Quality eval (backtest, promotion gate) | ✅ done (2026-09-03) |
-| Dashboard (attack report + promotion report UI) | ✅ done (2026-09-03) — 6 pages, hash router, TanStack Query |
+| Security scan (50+ attacks) | ✅ engine + `gate --dataset-source scan` (2026-09-03) — 6 categories, 50+ vectors, runner, report; standalone `scan` CLI planned |
+| Quality eval (backtest, promotion gate) | ✅ engine + `gatelane gate` (2026-09-03); standalone `eval` CLI planned |
+| Dashboard (attack report + promotion report UI) | ✅ done (2026-09-03) — 7 pages, hash router, TanStack Query |
 | Docs: threat-model.md | ✅ done (2026-09-03) |
 | Docs: attack-library.md | ✅ done (2026-09-03) |
 | Docs: architecture.md | ✅ done (2026-09-03) |
@@ -367,5 +374,3 @@ Apache 2.0.
 - [lanefoundry/groundlane](https://github.com/lanefoundry/groundlane) — trusted content access layer
 - [lanefoundry/looplane](https://github.com/lanefoundry/looplane) — coding agent iteration loop
 - [Lanefoundry brand spec](docs/strategic-record.md#5-brand-pivot-from-agent-platform-to--lane-family) — *-lane family positioning
-- `.research/2026-08-30-ai-agent-security-market.md` — agent security market (incl. Taiwan)
-- `.research/2026-08-30-ai-response-observability-market.md` — backtest whitespace

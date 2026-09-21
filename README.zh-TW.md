@@ -44,13 +44,12 @@ gatelane 提供這個原語。
 
 ## CLI 指令
 
-| 指令 | 說明 |
+| 指令 | 功能 |
 |---|---|
-| `gatelane scan` | 安全掃描 — 對模型執行攻擊探測 |
-| `gatelane eval` | 品質評估 — 對資料集回測，產出每個 candidate 的指標 |
-| `gatelane run` | 完整管線 — scan + eval 一次跑完 |
-| `gatelane snapshot` | 將生產流量快照為資料集 |
-| `gatelane init` | 建立 `gatelane.config.yaml` 初始設定檔 |
+| `gatelane gate` | 升級閘門 — 對資料集重播 candidate、judge 評分、與 baseline 比較並簽署報告 |
+| `gatelane freeze-slice` | 將一段時間（`7d`、`24h`、`30d`）的生產捕獲流量凍結為資料集檔案 |
+
+`gate --dataset-source scan` 會重播內建攻擊庫；`prod` 則重播凍結的生產切片。完整參數請執行 `gatelane --help`。獨立的 `scan` / `eval` / `run` / `snapshot` / `init` 指令為規劃中，尚未實作，見 [路線圖](docs/roadmap.md)。
 
 攻擊庫包含 50+ 個 prompt injection 向量，涵蓋直接 prompt injection、透過工具的間接 injection、連鎖攻擊、上下文視窗洪泛、記憶體投毒和工具濫用。整合 [garak](https://github.com/NVIDIA/garak)（NVIDIA）、[PyRIT](https://github.com/Azure/PyRIT)（Microsoft）和 [Promptfoo](https://github.com/promptfoo/promptfoo)（OpenAI）。
 
@@ -101,10 +100,9 @@ cp .env.example .env
 在 `.env` 中設定所需的密鑰：
 
 ```bash
-# 回測評分用的 LLM 裁判（選一個）
-GATELANE_JUDGE_PROVIDER=openai
-GATELANE_JUDGE_API_KEY=sk-...
-GATELANE_JUDGE_MODEL=gpt-4o
+# candidate / judge 模型的 provider 金鑰（設定你會用到的；
+# Anthropic、Google、Groq、OpenRouter、Ollama 見 .env.example）
+OPENAI_API_KEY=sk-...
 
 # 捕獲 API 認證（>= 32 個隨機字元）
 GATELANE_CAPTURE_TOKEN=$(openssl rand -hex 32)
@@ -154,40 +152,43 @@ const { response, record } = await capture(env, {
 });
 ```
 
-### 執行安全掃描
+### 凍結生產切片
 
 ```bash
-npx gatelane scan
+npx gatelane freeze-slice --window 7d --output dataset.jsonl \
+  --endpoint http://localhost:8787 --token "$GATELANE_CAPTURE_TOKEN"
 ```
 
-### 執行品質評估
+### 執行升級閘門
 
 ```bash
-npx gatelane eval --dataset my-dataset.json --format table
-```
+# 安全掃描：重播內建攻擊庫（mock provider，不需要 API key）
+npx gatelane gate --candidate model:gpt-5 --judges gpt-4o --dataset-source scan
 
-### 一次跑完
-
-```bash
-npx gatelane run --dataset my-dataset.json
+# 品質回測：重播凍結的生產切片
+npx gatelane gate --candidate model:gpt-5 --judges gpt-4o \
+  --provider openai --judge-provider openai --dataset dataset.jsonl
 ```
 
 ## 部署到 Cloudflare
 
 ```bash
+cd apps/worker
 pnpm exec wrangler login
 pnpm exec wrangler whoami
 pnpm exec wrangler d1 create gatelane
 pnpm exec wrangler r2 bucket create gatelane-captures
 pnpm exec wrangler kv namespace create GATELANE_KV
-# 將回傳的 id 貼到 wrangler.toml
+# 將回傳的 id 貼到 apps/worker/wrangler.toml
+pnpm exec wrangler d1 migrations apply gatelane --remote
+cd ../..
 
 pnpm secrets:status
 pnpm secrets:setup
 pnpm run deploy
 ```
 
-推送到 `main` 會在 CI 品質任務成功後自動部署。儲存庫必須有 `CLOUDFLARE_ACCOUNT_ID` 和 `CLOUDFLARE_API_TOKEN` GitHub Actions 密鑰，以及 `GATELANE_CAPTURE_TOKEN` 用於部署後煙霧測試。
+目前為手動部署（`pnpm run deploy`），CI 尚未自動部署。
 
 ## 使用案例
 
@@ -195,19 +196,19 @@ pnpm run deploy
 
 > 「我們是否暴露於已知的攻擊向量？我們怎麼知道修補有效？」
 
-在每次發佈前執行 `gatelane scan`。修補後執行 `gatelane eval`，驗證新版本不會在品質**或**攻擊抵抗力上退化。
+在每次發佈前執行 `gatelane gate --dataset-source scan`。修補後以凍結資料集執行 `gatelane gate`，驗證新版本不會在品質**或**攻擊抵抗力上退化。
 
 ### 正在出貨 LLM 功能的 ML / 平台團隊
 
 > 「我們能否在不整天盯著比較視圖的情況下出貨新模型版本？」
 
-在每個修改模型配置的 PR 上執行 `gatelane eval`。升級閘門自動路由到 canary 或回滾。
+在每個修改模型配置的 PR 上執行 `gatelane gate`。升級閘門自動路由到 canary 或回滾。
 
 ### 程式碼代理團隊
 
 > 「如果我的程式碼代理被 prompt injection 劫持怎麼辦？我怎麼知道什麼時候修好了？」
 
-使用程式碼代理特定的攻擊向量（工具濫用、透過程式碼執行的間接 injection）執行 `gatelane scan`。使用代理生產流量的凍結資料集執行 `gatelane eval` 來驗證修補。
+使用程式碼代理特定的攻擊向量（工具濫用、透過程式碼執行的間接 injection）執行 `gatelane gate --dataset-source scan`。使用代理生產流量的凍結資料集執行 `gatelane gate` 來驗證修補。
 
 ### CISO / 合規長（v2 範圍）
 
@@ -242,6 +243,8 @@ pnpm format           # 以 Prettier 自動格式化
 | 方法 | 路徑 | 說明 |
 |---|---|---|
 | POST | `/v1/capture` | 捕獲一次 LLM 呼叫（需要 Bearer token） |
+| GET | `/health` | 健康檢查 |
+| GET | `/v1/captures` | 列出捕獲紀錄 |
 | GET | `/v1/datasets` | 列出所有資料集 |
 | GET | `/v1/datasets/:id` | 取得指定資料集 |
 | GET | `/v1/replay-runs` | 列出所有重播執行 |
@@ -249,10 +252,15 @@ pnpm format           # 以 Prettier 自動格式化
 | GET | `/v1/promotions` | 列出所有升級報告 |
 | GET | `/v1/promotions/:id` | 取得指定升級報告 |
 | GET | `/v1/audit-log` | 列出稽核日誌項目 |
+| GET / POST | `/v1/canaries` | 列出 / 建立 canary 部署 |
+| GET | `/v1/canaries/:id` | 取得指定 canary |
+| POST | `/v1/canaries/:id/observe` | 記錄觀測值 |
+| POST | `/v1/canaries/:id/advance` | 推進 canary 階段 |
+| POST | `/v1/canaries/:id/rollback` | 回滾 canary |
 
 ### 儀表板
 
-儀表板是一個 React + Vite 應用，包含 6 個頁面（捕獲、資料集、重播執行、升級報告、安全掃描、稽核日誌）。本地啟動方式：
+儀表板是一個 React + Vite 應用，包含 7 個頁面（捕獲、資料集、重播執行、升級報告、Canary、安全掃描、稽核日誌）。本地啟動方式：
 
 ```bash
 cd apps/dashboard
@@ -293,15 +301,13 @@ gatelane/
 │   ├── cli/                    — CLI 介面（gatelane 指令）
 │   ├── source-prod-slice/      — 生產切片：freeze、replay-batch、canary、signed-report、audit-export
 │   ├── ci-adapter/             — CI/CD 整合（GitHub Actions）
-│   └── shared/                 — 共用型別、D1 schema
 ├── apps/
-│   ├── worker/                 — Cloudflare Worker（Hono、捕獲端點 + 重播 API）
-│   └── dashboard/              — React + Vite + TanStack Query（6 頁面、hash router）
+│   ├── worker/                 — Cloudflare Worker（Hono：捕獲、重播、canary API；D1 migrations）
+│   └── dashboard/              — React + Vite + TanStack Query（7 頁面、hash router）
 ├── tests/
 │   ├── unit/
 │   ├── integration/
 │   └── e2e/
-├── schema/d1.sql               — D1 資料庫 schema（位於 packages/shared）
 ├── package.json                — pnpm workspace 根目錄
 ├── pnpm-workspace.yaml
 └── LICENSE                     — Apache 2.0
@@ -326,9 +332,9 @@ gatelane/
 | 捕獲 SDK（一行整合） | ✅ 完成 (2026-09-03) |
 | 共用引擎（資料集 / 重播 / 比較 / 稽核日誌 / 升級） | ✅ 完成 (2026-09-03) |
 | Worker API（捕獲端點 + 重播 API） | ✅ 完成 (2026-09-03) |
-| 安全掃描（50+ 攻擊） | ✅ 完成 (2026-09-03) — 6 類別、50+ 向量、執行器、報告 |
-| 品質評估（回測，升級閘門） | ✅ 完成 (2026-09-03) |
-| 儀表板（攻擊報告 + 升級報告 UI） | ✅ 完成 (2026-09-03) — 6 頁面、hash router、TanStack Query |
+| 安全掃描（50+ 攻擊） | ✅ 引擎 + `gate --dataset-source scan`（2026-09-03）— 6 類別、50+ 向量、執行器、報告；獨立 `scan` 指令規劃中 |
+| 品質評估（回測，升級閘門） | ✅ 引擎 + `gatelane gate`（2026-09-03）；獨立 `eval` 指令規劃中 |
+| 儀表板（攻擊報告 + 升級報告 UI） | ✅ 完成 (2026-09-03) — 7 頁面、hash router、TanStack Query |
 | 文件：threat-model.md | ✅ 完成 (2026-09-03) |
 | 文件：attack-library.md | ✅ 完成 (2026-09-03) |
 | 文件：architecture.md | ✅ 完成 (2026-09-03) |
@@ -353,5 +359,3 @@ Apache 2.0.
 - [lanefoundry/groundlane](https://github.com/lanefoundry/groundlane) — 可信內容存取層
 - [lanefoundry/looplane](https://github.com/lanefoundry/looplane) — 程式碼代理迭代迴圈
 - [Lanefoundry 品牌規範](docs/strategic-record.md#5-brand-pivot-from-agent-platform-to--lane-family) — *-lane 家族定位
-- `.research/2026-08-30-ai-agent-security-market.md` — 代理安全市場（含台灣）
-- `.research/2026-08-30-ai-response-observability-market.md` — 回測空白市場

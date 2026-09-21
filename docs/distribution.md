@@ -451,7 +451,7 @@ release-blocking bug.**
 | `freeze()` (dataset) | shipped | planned | planned | `POST /v1/dataset` |
 | `backtest()` | shipped (engine) | planned | planned | `POST /v1/backtest` |
 | `promote()` decision | shipped | planned | planned | `GET /v1/promotion/:id` |
-| `redteam.run()` | shipped (engine) | planned | planned | `POST /v1/redteam` |
+| `scan.run()` | shipped (engine) | planned | via `gate --dataset-source scan` | `POST /v1/scan` (planned) |
 | `sign()` report | shipped | planned | planned | `POST /v1/sign` |
 | `audit.export()` | shipped | planned | planned | `GET /v1/audit` |
 

@@ -10,14 +10,18 @@ and auto-promotes or rolls back based on a configurable quality threshold.
 ## 1. High-Level Overview
 
 Gatelane is a monorepo organized around a **unified engine** that powers
-two CLI commands through a single promotion gate:
+a single promotion gate. Today the CLI exposes `gatelane gate` and
+`gatelane freeze-slice`; the standalone `scan` / `eval` / `run` /
+`snapshot` / `init` commands below are the planned command surface, and
+their behavior is currently reachable through `gate` (`--dataset-source
+scan` for the security scan, `--dataset` / `prod` for the quality eval).
 
-- **`gatelane scan`** (`packages/gatelane-engine`): Runs adversarial
+- **`gatelane scan`** (planned; `packages/gatelane-engine`): Runs adversarial
   attack vectors (prompt injection, tool abuse, context flooding, etc.)
   against a target and produces a vulnerability report. Designed for
   pre-deployment security validation.
 
-- **`gatelane eval`** (`packages/source-prod-slice` + `packages/gatelane-engine`):
+- **`gatelane eval`** (planned; `packages/source-prod-slice` + `packages/gatelane-engine`):
   Takes a time window of production captures, freezes them into a dataset,
   replays the dataset against candidate models, and produces a pass/block
   decision. Designed for scheduled or on-demand model upgrades.
@@ -84,7 +88,7 @@ apps/worker                     (depends on gatelane-sdk + gatelane-engine + hon
 | `packages/gatelane-sdk`      | `@lanefoundry/gatelane-sdk`       | Capture SDK, dataset, gate, promotion, pluggable storage       |
 | `packages/gatelane-engine`   | `@lanefoundry/gatelane-engine`    | Unified engine: LLM caller, judge, replay, compare, sign, security scan, tracing, OTel export |
 | `packages/source-prod-slice` | `@lanefoundry/source-prod-slice`  | Production slice: freeze-slice, replay-batch, canary, signed report, audit export |
-| `packages/cli`               | `@lanefoundry/gatelane-cli`       | CLI interface (`gatelane scan`, `eval`, `run`, `snapshot`, `canary`) |
+| `packages/cli`               | `@lanefoundry/gatelane-cli`       | CLI interface (`gatelane gate`, `freeze-slice`) |
 | `packages/ci-adapter`        | `@lanefoundry/ci-adapter`         | CI/CD integration (GitHub Actions)                             |
 | `apps/worker`                | `@lanefoundry/gatelane-worker`    | Cloudflare Worker; Hono HTTP server                            |
 
@@ -207,9 +211,7 @@ used for durable business data.
 | Variable                   | Purpose                              |
 |----------------------------|--------------------------------------|
 | `GATELANE_CAPTURE_TOKEN`   | Bearer token for the capture endpoint |
-| `GATELANE_JUDGE_PROVIDER`  | Provider of the judge model          |
-| `GATELANE_JUDGE_API_KEY`   | API key for the judge model          |
-| `GATELANE_JUDGE_MODEL`     | Model ID used to score responses     |
+| `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / … | Provider keys for candidate and judge models (see `.env.example`) |
 
 Secrets are deployed via `wrangler secret bulk .env`.
 
@@ -506,10 +508,10 @@ pnpm secrets:status         # wrangler secret list
 ### First-time setup
 
 1. `wrangler d1 create gatelane` -- create the D1 database and paste the
-   ID into `wrangler.toml`
+   ID into `apps/worker/wrangler.toml`
 2. `wrangler kv namespace create GATELANE_KV` -- create the KV namespace
-   and paste the ID into `wrangler.toml`
-3. Apply the schema: `wrangler d1 execute gatelane --file=packages/shared/schema/d1.sql`
+   and paste the ID into `apps/worker/wrangler.toml`
+3. Apply the schema: from `apps/worker`, run `wrangler d1 migrations apply gatelane --remote`
 4. Create a `.env` file with the four secret values and run
    `pnpm secrets:setup`
 5. `pnpm deploy`

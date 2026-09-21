@@ -80,12 +80,14 @@ Legend:
 
 | Surface | Status | Wire format |
 |---|---|---|
-| `gatelane scan` | ✓ (JS) | n/a (local) |
-| `gatelane eval` | ✓ (JS) | n/a (local) |
-| `gatelane run` (scan + eval) | ✓ (JS) | n/a (local) |
-| `gatelane snapshot` | ✓ (JS) | `GET /v1/captures` |
-| `gatelane canary start/status/observe/advance/rollback/tick` | ✓ (JS) | `/v1/canaries/*` |
-| `gatelane init` | ✓ (JS) | n/a |
+| `gatelane gate` | ✓ (JS) | n/a (local) |
+| `gatelane freeze-slice` | ✓ (JS) | `GET /v1/captures` |
+| `gatelane scan` | · (planned; use `gate --dataset-source scan`) | n/a (local) |
+| `gatelane eval` | · (planned; use `gate`) | n/a (local) |
+| `gatelane run` (scan + eval) | · (planned) | n/a (local) |
+| `gatelane snapshot` | · (planned; use `freeze-slice`) | `GET /v1/captures` |
+| `gatelane canary start/status/observe/advance/rollback/tick` | · (planned; HTTP API only) | `/v1/canaries/*` |
+| `gatelane init` | · (planned) | n/a |
 | `gatelane serve` (worker + dashboard) | · | n/a |
 
 CLI is JS-only in v1; Python SDK users go straight to the HTTP API.

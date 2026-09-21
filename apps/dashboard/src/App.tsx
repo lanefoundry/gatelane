@@ -5,7 +5,7 @@ import { DatasetsPage } from "./pages/Datasets";
 import { ReplayRunsPage } from "./pages/ReplayRuns";
 import { PromotionsPage } from "./pages/Promotions";
 import { CanaryPage } from "./pages/Canary";
-import { RedTeamPage } from "./pages/RedTeam";
+import { ScanPage } from "./pages/Scan";
 import { AuditLogPage } from "./pages/AuditLog";
 
 const queryClient = new QueryClient({
@@ -27,7 +27,7 @@ function Router() {
     case "#replay-runs": return <ReplayRunsPage />;
     case "#promotions": return <PromotionsPage />;
     case "#canary": return <CanaryPage />;
-    case "#red-team": return <RedTeamPage />;
+    case "#scan": return <ScanPage />;
     case "#audit-log": return <AuditLogPage />;
     default: return <CapturesPage />;
   }
