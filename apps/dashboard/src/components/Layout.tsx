@@ -6,7 +6,7 @@ const NAV_ITEMS = [
   { label: "Replay Runs", href: "#replay-runs" },
   { label: "Promotions", href: "#promotions" },
   { label: "Canary", href: "#canary" },
-  { label: "Red Team", href: "#red-team" },
+  { label: "Scan", href: "#scan" },
   { label: "Audit Log", href: "#audit-log" },
 ];
 
