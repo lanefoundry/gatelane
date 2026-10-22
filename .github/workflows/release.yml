@@ -306,15 +306,48 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: gatelane ${{ github.ref_name }}
           generate_release_notes: true
+          # The build job stages everything flat into artifacts/final/, and
+          # upload-artifact strips that prefix, so the download lands the
+          # files directly in artifacts/. The standalone CLI archives are
+          # siblings of the npm tarballs there, not under artifacts/bin/.
           files: |
             artifacts/*.tgz
-            artifacts/bin/*.tar.gz
-            artifacts/bin/*.zip
+            artifacts/*.tar.gz
+            artifacts/*.zip
             artifacts/*.deb
             artifacts/*.rpm
             artifacts/SHA256SUMS
             artifacts/SHA256SUMS.sig
             artifacts/SHA256SUMS.bundle
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # The release must contain every file SHA256SUMS lists. A glob that
+      # matches nothing uploads nothing and the release still looks fine,
+      # which is how the standalone CLI archives went missing once.
+      - name: Verify every checksummed file is attached
+        run: |
+          set -euo pipefail
+          missing=0
+          for attempt in 1 2 3 4 5; do
+            missing=0
+            attached="$(gh release view "${{ github.ref_name }}" --json assets --jq '.assets[].name')"
+            while read -r sum file; do
+              [ -n "${file:-}" ] || continue
+              if ! echo "$attached" | grep -qx "$file"; then
+                echo "::error::${file} is listed in SHA256SUMS but not attached to the release"
+                missing=1
+              fi
+            done < artifacts/SHA256SUMS
+            [ "$missing" -eq 0 ] && break
+            echo "attempt ${attempt}: some assets are not attached yet, waiting"
+            sleep 15
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo "::error::the release is missing files that SHA256SUMS lists"
+            exit 1
+          fi
+          echo "every file in SHA256SUMS is attached to the release"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

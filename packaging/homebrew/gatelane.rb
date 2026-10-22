@@ -7,7 +7,7 @@
 # `brew install lanefoundry/tap/gatelane` resolves it from there.
 #
 # Update procedure (on every gatelane release):
-#   1. Run `pnpm release:bump-formula -- --tag=vX.Y.Z` from the gatelane repo.
+#   1. Run `node packaging/homebrew/bump-formula.mjs -- --tag=vX.Y.Z` from the gatelane repo.
 #      The script downloads SHA256SUMS from the GitHub release and rewrites
 #      this file in place.
 #   2. Open a PR against lanefoundry/homebrew-tap.
@@ -20,24 +20,42 @@
 class Gatelane < Formula
   desc "Pre-production safety + eval gate for AI agents"
   homepage "https://github.com/lanefoundry/gatelane"
-  url "https://github.com/lanefoundry/gatelane/releases/download/vX.Y.Z/gatelane-X.Y.Z.tar.gz"  # STAMP:url
+
+  # The CLI is a single Node.js program, not a compiled binary, so the
+  # archive is platform specific. Homebrew extracts the top level
+  # directory, so the binary is installed from inside it.
+  on_macos do
+    if Hardware::CPU.arm?
+      url "https://github.com/lanefoundry/gatelane/releases/download/vX.Y.Z/gatelane-darwin-arm64.tar.gz"  # STAMP:url
+      sha256 "PLACEHOLDER_SHA256_DARWIN_ARM64"                                                      # STAMP:sha256
+    else
+      url "https://github.com/lanefoundry/gatelane/releases/download/vX.Y.Z/gatelane-darwin-amd64.tar.gz"  # STAMP:url
+      sha256 "PLACEHOLDER_SHA256_DARWIN_AMD64"                                                      # STAMP:sha256
+    end
+  end
+
+  on_linux do
+    if Hardware::CPU.arm?
+      url "https://github.com/lanefoundry/gatelane/releases/download/vX.Y.Z/gatelane-linux-arm64.tar.gz"  # STAMP:url
+      sha256 "PLACEHOLDER_SHA256_LINUX_ARM64"                                                      # STAMP:sha256
+    else
+      url "https://github.com/lanefoundry/gatelane/releases/download/vX.Y.Z/gatelane-linux-amd64.tar.gz"  # STAMP:url
+      sha256 "PLACEHOLDER_SHA256_LINUX_AMD64"                                                      # STAMP:sha256
+    end
+  end
+
   version "X.Y.Z"                                                                              # STAMP:version
-  sha256 "PLACEHOLDER_SHA256_LINUX_AMD64"                                                      # STAMP:sha256
   license "Apache-2.0"
 
-  depends_on "node" => :build   # only required when building from source; bottled binaries skip it
-
-  # Multi-platform. Homebrew resolves the right bottle at install time.
-  bottle do
-    root_url "https://github.com/lanefoundry/homebrew-tap/releases/download/gatelane-X.Y.Z"   # STAMP:bottle_root
-    sha256 cellar: :any_skip_relocation, arm64_sonoma: "PLACEHOLDER_SHA256_DARWIN_ARM64"
-    sha256 cellar: :any_skip_relocation, sonoma:        "PLACEHOLDER_SHA256_DARWIN_AMD64"
-    sha256 cellar: :any_skip_relocation, x86_64_linux:  "PLACEHOLDER_SHA256_LINUX_AMD64_BOTTLE"
-  end if false   # bottles generated after first stable release
+  # The CLI is a Node.js program, so Node is a runtime dependency, not
+  # just a build dependency.
+  depends_on "node"
 
   def install
-    # Pre-built binary layout from packaging/homebrew/binary-layout.
-    bin.install "gatelane"
+    bin.install "gatelane-darwin-arm64/gatelane" => "gatelane" if OS.mac? && Hardware::CPU.arm?
+    bin.install "gatelane-darwin-amd64/gatelane" => "gatelane" if OS.mac? && !Hardware::CPU.arm?
+    bin.install "gatelane-linux-arm64/gatelane" => "gatelane" if OS.linux? && Hardware::CPU.arm?
+    bin.install "gatelane-linux-amd64/gatelane" => "gatelane" if OS.linux? && !Hardware::CPU.arm?
   end
 
   test do

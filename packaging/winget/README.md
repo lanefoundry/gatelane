@@ -35,3 +35,10 @@ node packaging/winget/bump-manifest.mjs -- --tag=vX.Y.Z
       and installs.
 - [ ] `winget upgrade lanefoundry.gatelane` picks up the next
       release without an explicit re-install.
+- [ ] `gatelane --help` prints the usage text after install.
+
+The archive contains `gatelane` (the bundled CLI) and `gatelane.cmd`
+(the launcher that runs it with Node). There is no `.exe`: the CLI is a
+Node.js program, not a compiled binary. The installer manifest is a
+portable nested installer that shims `gatelane.cmd`, so Node.js 22 or
+newer has to be on the PATH.

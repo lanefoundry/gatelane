@@ -35,5 +35,9 @@ without waiting for review.
 - [ ] `scoop install gatelane` succeeds on Windows 10+ with PowerShell 5+.
 - [ ] `scoop update gatelane` resolves the new version automatically
       (the `suggest.checkver.github` block).
-- [ ] `gatelane.exe --version` returns the version that matches the
-      manifest.
+- [ ] `gatelane --help` prints the usage text after install.
+
+The archive contains `gatelane` (the bundled CLI) and `gatelane.cmd`
+(the launcher that runs it with Node). There is no `.exe`: the CLI is a
+Node.js program, not a compiled binary. The manifest therefore depends
+on `nodejs-lts` and shims `gatelane.cmd`.

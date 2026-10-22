@@ -5,7 +5,10 @@ PackageLocale: en-US
 InstallerType: zip
 NestedInstallerType: portable
 NestedInstallerFiles:
-  - RelativeFilePath: gatelane-windows-amd64\gatelane.exe
+  # The Windows archive contains `gatelane` (the bundled CLI) and
+  # `gatelane.cmd` (the launcher that runs it with node). There is no
+  # .exe: the CLI is a Node.js program, not a compiled binary.
+  - RelativeFilePath: gatelane-windows-amd64\gatelane.cmd
 InstallModes:
   - silent
   - interactive

@@ -32,6 +32,15 @@ The script downloads `SHA256SUMS` from the GitHub Release and rewrites
 the `# STAMP:` markers are anchors; if you change them, the bump
 script breaks.
 
+The formula installs the platform archive that matches the machine:
+`gatelane-darwin-arm64.tar.gz`, `gatelane-darwin-amd64.tar.gz`,
+`gatelane-linux-arm64.tar.gz` or `gatelane-linux-amd64.tar.gz`. The url
+and the sha256 are always taken from the same asset, so a mismatched
+pair cannot be published.
+
+> The CLI is a Node.js program, not a compiled binary, so `node` is a
+> **runtime** dependency of the formula.
+
 ## Bottle generation
 
 Bottles are Homebrew's precompiled binary format. After the first
