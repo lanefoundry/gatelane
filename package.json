@@ -20,7 +20,9 @@
     "changeset": "changeset",
     "changeset:version": "changeset version",
     "changeset:publish": "pnpm publish -r --provenance --no-git-checks",
-    "release:dry-run": "changeset status --since=main"
+    "release:dry-run": "changeset status --since=main",
+    "pack:all": "node tools/pack-all.mjs",
+    "verify:pack": "node tools/verify-pack.mjs"
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.0",

@@ -1,0 +1,101 @@
+name: Pack npm tarballs
+
+# Packages the workspace on every push / PR and keeps the tarballs as
+# downloadable artifacts. No registry account, token or npm org is needed —
+# this is the fully automatic path.
+#
+# Permanent install URLs come from the GitHub Release built by
+# release.yml on a `v*.*.*` tag. This workflow only produces short-lived
+# (90 day) artifacts for testing a branch.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pack:
+    name: Pack
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # dist/ is gitignored and every package ships only dist/, so a
+      # package that is not built here would be published as an empty shell.
+      - name: Build packages
+        run: pnpm -r --filter "./packages/*" build
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          elif [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            VERSION="0.0.0-pr-${{ github.event.pull_request.number }}"
+          else
+            VERSION="0.0.0-canary-${GITHUB_SHA::7}"
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Packing version ${VERSION}"
+
+      - name: Stamp version
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          for pkg in \
+            packages/gatelane-sdk \
+            packages/gatelane-engine \
+            packages/source-prod-slice \
+            packages/cli \
+            packages/ci-adapter; do
+            node -e "const p=require('./${pkg}/package.json');p.version='${VERSION}';require('fs').writeFileSync('./${pkg}/package.json',JSON.stringify(p,null,2)+'\n');"
+          done
+
+      - name: Pack
+        run: pnpm pack:all
+
+      # Installs the tarballs into an empty project, imports the SDK and
+      # runs the CLI — catches empty tarballs and unresolvable workspace
+      # dependencies before anyone else hits them.
+      - name: Verify tarballs install cleanly
+        run: pnpm verify:pack
+
+      - name: Upload tarballs
+        uses: actions/upload-artifact@v4
+        with:
+          name: gatelane-npm-tarballs-${{ steps.version.outputs.version }}
+          path: artifacts/npm/*.tgz
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Summary
+        run: |
+          {
+            echo "### npm tarballs packed"
+            echo
+            echo "Version: \`${{ steps.version.outputs.version }}\`"
+            echo
+            echo "Download with:"
+            echo
+            echo '```bash'
+            echo "gh run download ${{ github.run_id }} -n gatelane-npm-tarballs-${{ steps.version.outputs.version }}"
+            echo "npm i ./*.tgz"
+            echo '```'
+            echo
+            echo "Permanent URLs are attached to the GitHub Release when a \`v*.*.*\` tag is pushed."
+          } >> "$GITHUB_STEP_SUMMARY"

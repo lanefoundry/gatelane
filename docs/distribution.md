@@ -76,7 +76,7 @@ Each subsection is a contract: **what ships, where, and the acceptance
 criterion** that says "this channel is done." Until the acceptance
 criterion passes, the channel is aspirational, not shipped.
 
-### 3.1 npm — `@lanefoundry/gatelane-sdk`, `@lanefoundry/gatelane-engine`, `@lanefoundry/gatelane-cli`
+### 3.1 npm — the `@lanefoundry/*` package family
 
 **What ships**
 
@@ -85,22 +85,81 @@ criterion passes, the channel is aspirational, not shipped.
 - `@lanefoundry/gatelane-engine` — replay, compare, judge, sign. Runs in
   the Worker; published for users that want to embed the engine into a
   custom runtime. Today: `0.0.2-dev`.
+- `@lanefoundry/source-prod-slice` — freeze / replay / compare / canary
+  orchestration. Runtime dependency of the CLI. Today: `0.0.1-dev`.
 - `@lanefoundry/gatelane-cli` — `bin: { gatelane: ... }`. Today:
   `0.0.1-dev`.
+- `@lanefoundry/gatelane-ci-adapter` — `bin: { gatelane-ci: ... }`, GitHub
+  Actions glue. Today: `0.0.0-dev`.
 
 **Where**
 
 - Public registry: `https://registry.npmjs.org/`
-- Today the workspace publishes are unconfigured (`publishConfig` only on
-  the SDK). Engine and CLI inherit workspace-only linking.
+- Five packages ship together, in this order (dependencies first):
+  `gatelane-sdk` → `gatelane-engine` → `source-prod-slice` → `gatelane-cli`
+  → `gatelane-ci-adapter`.
+- All of them set `publishConfig.access = "public"`; the packages are
+  scoped, and npm defaults scoped packages to restricted.
 
 **Install**
 
 ```bash
+# canary channel — published from every push to main
+pnpm add @lanefoundry/gatelane-sdk@canary
+pnpm add @lanefoundry/gatelane-engine@canary    # optional, embedded engine
+pnpm add -D @lanefoundry/gatelane-cli@canary    # CLI
+
+# stable channel — published from a v*.*.* tag
 pnpm add @lanefoundry/gatelane-sdk
-pnpm add @lanefoundry/gatelane-engine   # optional, only for embedded engine
-pnpm add -g @lanefoundry/gatelane-cli   # CLI
 ```
+
+**Offline / pre-publish fallback**
+
+```bash
+pnpm -r --filter "./packages/*" build
+pnpm pack:all            # artifacts/npm/*.tgz, workspace:* already rewritten
+npm i /path/to/gatelane/artifacts/npm/*.tgz
+```
+
+**Automatic packing (no registry account needed)**
+
+`.github/workflows/pack.yml` runs on every push to `main`, every PR and on
+demand. It builds the workspace, stamps a version, packs all five
+tarballs, verifies they install into an empty project, and uploads them as
+a run artifact. No npm org, token or variable is involved.
+
+```bash
+gh workflow run "Pack npm tarballs"           # manual run
+gh run download <run-id> -n gatelane-npm-tarballs-<version>
+npm i ./*.tgz
+```
+
+Pushing a `v*.*.*` tag does the same thing but attaches the tarballs to
+the **GitHub Release**, which gives permanent URLs:
+
+```bash
+V=v0.1.0
+VER=${V#v}
+BASE=https://github.com/lanefoundry/gatelane/releases/download/$V
+npm i \
+  "$BASE/lanefoundry-gatelane-sdk-$VER.tgz" \
+  "$BASE/lanefoundry-gatelane-engine-$VER.tgz" \
+  "$BASE/lanefoundry-source-prod-slice-$VER.tgz" \
+  "$BASE/lanefoundry-gatelane-cli-$VER.tgz" \
+  "$BASE/lanefoundry-gatelane-ci-adapter-$VER.tgz"
+```
+
+**Troubleshooting**
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `ERR_PNPM_FETCH_404` on `@lanefoundry/*` | package not published (or only `canary` exists) | install with `@canary`, or use the tarball fallback |
+| `npm i github:lanefoundry/gatelane` "succeeds" but nothing imports | repo root is `private` with no `main`/`exports` | never install the monorepo root |
+| `ERR_PNPM_WORKSPACE_PKG_NOT_FOUND ... workspace:*` | `workspace:*` is only rewritten by `pack`/`publish` | install tarballs / published versions, not git paths |
+| `ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED` | pnpm 10 blocks build scripts of git dependencies | prefer registry installs; if you must use git, allowlist the package |
+| install pulls an empty tarball | package published without `dist/` (it is gitignored) | build first; `pnpm verify:pack` catches this in CI |
+| `ERR_PNPM_FETCH_404` on `source-prod-slice` only | CLI's runtime dependency was left out of the publish step | both publish workflows now include all five packages |
+| npm publish fails with `Scope not found` | the `lanefoundry` npm org does not exist yet | create it (see runbook) or use the tarball channels |
 
 **Acceptance criterion**
 
@@ -108,9 +167,93 @@ pnpm add -g @lanefoundry/gatelane-cli   # CLI
       semver tag.
 - [ ] `pnpm dlx @lanefoundry/gatelane-cli --help` works on Node 22+ with
       zero local clone.
-- [ ] A CI release workflow (`.github/workflows/release.yml`) bumps all
-      three packages together with a single version policy (SVP) via
-      `changesets` or `monochange`.
+- [ ] CI packs the workspace, installs the tarballs into a clean project
+      and imports the SDK, so an empty or unresolvable package cannot ship.
+- [ ] A `v*.*.*` tag produces a GitHub Release with the five tarballs
+      attached and installable via a plain `npm i <url>`.
+
+**Release runbook**
+
+One-time prerequisites:
+
+1. **Create the npm organisation** (this is the scope; `npm org` has no
+   create subcommand, it must be done in the web UI):
+   1. Sign in at <https://www.npmjs.com/login>.
+   2. Avatar (top right) → **Add an Organization**.
+   3. Name: `lanefoundry` — the org name becomes the package scope.
+   4. Choose **Unlimited public packages** (free) → **Create**.
+   5. Invite the publishing account as a member with the `developer` role.
+
+   Verify locally:
+
+   ```bash
+   npm login
+   npm org ls lanefoundry     # lists the members of the scope
+   curl -s https://registry.npmjs.org/-/org/lanefoundry/package
+   # -> 200; before creation this returned {"error":"Scope not found"}
+   ```
+
+2. **Create the token**: avatar → **Access Tokens** → **Generate New Token**
+   → **Granular Access Token**.
+   - Expiration: 90 days (rotate before it lapses)
+   - **Packages and scopes**: `Read and write`
+   - Organizations: `lanefoundry`
+   - Leave "bypass 2FA" enabled so CI can publish non-interactively.
+
+   Sanity check the token is not needed for a dry run — packaging can be
+   validated without credentials:
+
+   ```bash
+   cd packages/gatelane-sdk && npm publish --dry-run --access public --tag canary
+   ```
+
+3. **Wire it into GitHub** (repo → Settings → Secrets and variables →
+   Actions), or via CLI:
+
+   ```bash
+   gh variable set ENABLE_NPM_CANARY --body true   # Variables tab
+   gh variable set ENABLE_NPM_PUBLISH --body true  # Variables tab (stable releases)
+   gh secret set NPM_TOKEN                         # Secrets tab, paste token
+   ```
+
+   These two variables are independent on purpose:
+
+   | Variable | Effect when unset |
+   |---|---|
+   | `ENABLE_NPM_CANARY` | `publish-npm.yml` shows a **skipped** job with a warning annotation; no npm publish happens |
+   | `ENABLE_NPM_PUBLISH` | `release.yml`'s npm job is skipped; the GitHub Release, tarballs, binaries and Docker image are still produced |
+
+   So a tag can be pushed **before** the npm org exists, and consumers
+   install from the GitHub Release tarballs.
+
+Canary (runs on every push to `main` once enabled):
+
+```bash
+# publish the current main without waiting for a push
+gh workflow run "Publish npm (canary)" -f publish=true
+
+# confirm
+npm view @lanefoundry/gatelane-sdk@canary version
+```
+
+Consumers install `@canary` until a stable release exists.
+
+Stable:
+
+```bash
+pnpm changeset          # describe the change, pick a bump
+pnpm changeset:version  # apply versions + changelog
+git commit -am "chore: release"
+git tag v0.1.0          # stable semver only — no -rc / -dev suffix
+git push --follow-tags
+```
+
+`release.yml` stamps `v0.1.0` into all five `package.json` files and
+`packages/gatelane-sdk-py/pyproject.toml`, publishes in dependency order,
+and then verifies that `@latest` resolves to the stamped version for every
+package before the run can pass. The same run attaches the five tarballs to
+the GitHub Release, so the release is usable even if the npm job was
+skipped.
 
 ### 3.2 PyPI — `gatelane-sdk`
 
@@ -123,8 +266,10 @@ pnpm add -g @lanefoundry/gatelane-cli   # CLI
 **Where**
 
 - Public registry: `https://pypi.org/`
-- The directory `packages/gatelane-sdk-py/` exists but is empty (only
-  `.pytest_cache` is checked in). This channel is **not shipped yet**.
+- Source lives in `packages/gatelane-sdk-py/`. The checked-in version is a
+  `-dev` placeholder; `release.yml` stamps the tag version into
+  `pyproject.toml` before building. This channel is **not shipped yet** —
+  `pip install gatelane-sdk` returns "No matching distribution found".
 
 **Install**
 

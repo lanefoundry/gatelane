@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish this commit to npm under the canary dist-tag'
+        type: boolean
+        default: false
 
 # Canary publishes to npm under the @canary dist-tag. Stable publishes
 # happen from .github/workflows/release.yml on tag.
@@ -15,8 +20,35 @@ permissions:
   contents: read
   id-token: write
 
+env:
+  # Publish order matters: every package must land after the workspace
+  # packages it depends on, otherwise `workspace:*` resolves to a version
+  # that is not on the registry yet and the install fails with a 404.
+  NPM_PACKAGE_DIRS: >-
+    packages/gatelane-sdk
+    packages/gatelane-engine
+    packages/source-prod-slice
+    packages/cli
+    packages/ci-adapter
+
 jobs:
+  # Keep the "disabled" case visible. Previously every publish step was
+  # gated with `if: vars.ENABLE_NPM_CANARY == 'true'`, so a run with the
+  # variable unset looked green while publishing nothing at all.
+  publish-disabled:
+    name: Publish skipped (ENABLE_NPM_CANARY not set)
+    if: vars.ENABLE_NPM_CANARY != 'true' && !inputs.publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Warn
+        run: |
+          echo "::warning title=npm canary disabled::ENABLE_NPM_CANARY is not 'true' and this run was not dispatched with publish=true, so no package was published. Set the repository variable ENABLE_NPM_CANARY=true (and the NPM_TOKEN secret) to enable canary publishing."
+
   publish-canary:
+    name: Publish canary
+    # Gate at the job level so a disabled publish shows up as "skipped" in
+    # the run list instead of a green job with silently skipped steps.
+    if: vars.ENABLE_NPM_CANARY == 'true' || inputs.publish
     runs-on: ubuntu-latest
     environment:
       name: npm-canary
@@ -34,31 +66,50 @@ jobs:
           registry-url: https://registry.npmjs.org/
 
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @lanefoundry/gatelane-sdk build
-      - run: pnpm --filter @lanefoundry/gatelane-engine build
-      - run: pnpm --filter @lanefoundry/gatelane-cli build
 
-      - name: Stamp canary version + dist-tag
+      # Build every workspace package (topological order), not just the
+      # ones we used to list. `files` only ships dist/, so a package that
+      # is published without being built ships an empty tarball.
+      - name: Build packages
+        run: pnpm -r --filter "./packages/*" build
+
+      - name: Stamp canary version
         run: |
           SHA="${GITHUB_SHA::7}"
-          for pkg in packages/gatelane-sdk packages/gatelane-engine packages/cli; do
-            node -e "const p=require('./${pkg}/package.json');p.version=\`0.0.0-canary-${SHA}\`;require('fs').writeFileSync('./${pkg}/package.json',JSON.stringify(p,null,2));"
+          VERSION="0.0.0-canary-${SHA}"
+          echo "Publishing version ${VERSION}"
+          for pkg in $NPM_PACKAGE_DIRS; do
+            node -e "const p=require('./${pkg}/package.json');p.version='${VERSION}';require('fs').writeFileSync('./${pkg}/package.json',JSON.stringify(p,null,2)+'\n');"
           done
 
-      - name: Publish SDK
-        if: ${{ vars.ENABLE_NPM_CANARY == 'true' }}
-        run: pnpm --filter @lanefoundry/gatelane-sdk publish --provenance --no-git-checks --tag canary
+      - name: Publish packages
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          SHA="${GITHUB_SHA::7}"
+          VERSION="0.0.0-canary-${SHA}"
+          for pkg in $NPM_PACKAGE_DIRS; do
+            echo "::group::publishing ${pkg}@${VERSION}"
+            (cd "$pkg" && pnpm publish --tag canary --access public --provenance --no-git-checks)
+            echo "::endgroup::"
+          done
 
-      - name: Publish engine
-        if: ${{ vars.ENABLE_NPM_CANARY == 'true' }}
-        run: pnpm --filter @lanefoundry/gatelane-engine publish --provenance --no-git-checks --tag canary
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Publish CLI
-        if: ${{ vars.ENABLE_NPM_CANARY == 'true' }}
-        run: pnpm --filter @lanefoundry/gatelane-cli publish --provenance --no-git-checks --tag canary
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Verify the packages are actually on the registry
+        run: |
+          set -euo pipefail
+          SHA="${GITHUB_SHA::7}"
+          VERSION="0.0.0-canary-${SHA}"
+          for name in \
+            @lanefoundry/gatelane-sdk \
+            @lanefoundry/gatelane-engine \
+            @lanefoundry/source-prod-slice \
+            @lanefoundry/gatelane-cli \
+            @lanefoundry/gatelane-ci-adapter; do
+            published="$(npm view "${name}@canary" version)"
+            echo "${name}@canary -> ${published}"
+            if [ "$published" != "$VERSION" ]; then
+              echo "::error::${name}@canary is ${published}, expected ${VERSION}"
+              exit 1
+            fi
+          done

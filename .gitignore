@@ -23,6 +23,7 @@ coverage/
 
 # Build
 *.tsbuildinfo
+artifacts/
 
 # Python
 __pycache__/

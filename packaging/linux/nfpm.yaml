@@ -1,0 +1,37 @@
+# Linux packaging (.deb / .rpm) — nfpm configuration.
+#
+# Used by .github/workflows/release.yml. The version is templated in by
+# the workflow (${NFPM_VERSION}) so a single file works for every release.
+#
+# Local build:
+#   NFPM_VERSION=0.1.0 nfpm package -f packaging/linux/nfpm.yaml -p deb -t ./out
+name: gatelane
+arch: ${NFPM_ARCH}
+platform: linux
+version: ${NFPM_VERSION}
+release: 1
+section: utils
+priority: optional
+vendor: lanefoundry
+maintainer: lanefoundry <noreply@lanefoundry.dev>
+description: |
+  Pre-production safety + eval gate for AI agents.
+  gatelane replays captured LLM traffic, judges it, compares the result
+  against a baseline, and signs the report so a promotion decision is
+  reproducible.
+homepage: https://github.com/lanefoundry/gatelane
+license: Apache-2.0
+# The bundled CLI is a single Node.js file with a `#!/usr/bin/env node`
+# shebang, produced by the esbuild step in release.yml.
+depends:
+  - nodejs
+contents:
+  - src: artifacts/bin/gatelane-linux-amd64/gatelane
+    dst: /usr/bin/gatelane
+    file_info:
+      mode: 0755
+deb:
+  # Signature is applied by the release workflow (dpkg-sig / rpm --addsign).
+  compression: gzip
+rpm:
+  group: Development/Tools

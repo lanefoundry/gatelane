@@ -53,11 +53,10 @@ jobs:
           pnpm typecheck
           pnpm test
 
-      - name: Build SDK + engine + CLI
-        run: |
-          pnpm --filter @lanefoundry/gatelane-sdk build
-          pnpm --filter @lanefoundry/gatelane-engine build
-          pnpm --filter @lanefoundry/gatelane-cli build
+      # Build every workspace package in topological order. Packages ship
+      # only dist/, so anything not built here ends up as an empty tarball.
+      - name: Build packages
+        run: pnpm -r --filter "./packages/*" build
 
       - name: Build dashboard (static assets)
         run: pnpm --filter @lanefoundry/gatelane-dashboard build
@@ -66,109 +65,135 @@ jobs:
         id: tag
         run: |
           if [ -n "${{ inputs.tag }}" ]; then
-            echo "value=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+            TAG="${{ inputs.tag }}"
           else
-            echo "value=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+            TAG="${GITHUB_REF_NAME}"
           fi
+          # The version used everywhere is the tag without its leading "v".
+          echo "value=${TAG#v}" >> "$GITHUB_OUTPUT"
+          echo "Resolved version: ${TAG#v}"
 
-      - name: Stamp version into SDK package.json
+      - name: Stamp version into package.json
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          for pkg in packages/gatelane-sdk packages/gatelane-engine packages/cli; do
-            node -e "const p=require('./${pkg}/package.json');p.version='${VERSION}';require('fs').writeFileSync('./${pkg}/package.json',JSON.stringify(p,null,2));"
+          VERSION="${{ steps.tag.outputs.value }}"
+          for pkg in packages/gatelane-sdk packages/gatelane-engine packages/source-prod-slice packages/cli packages/ci-adapter; do
+            node -e "const p=require('./${pkg}/package.json');p.version='${VERSION}';require('fs').writeFileSync('./${pkg}/package.json',JSON.stringify(p,null,2)+'\n');"
           done
 
       - name: Pack npm tarballs
         run: |
-          for pkg in packages/gatelane-sdk packages/gatelane-engine packages/cli; do
-            (cd "$pkg" && pnpm pack)
-          done
           mkdir -p artifacts
-          mv packages/gatelane-sdk/*.tgz    artifacts/gatelane-sdk.tgz
-          mv packages/gatelane-engine/*.tgz  artifacts/gatelane-engine.tgz
-          mv packages/cli/*.tgz             artifacts/gatelane-cli.tgz
+          for pkg in packages/gatelane-sdk packages/gatelane-engine packages/source-prod-slice packages/cli packages/ci-adapter; do
+            (cd "$pkg" && pnpm pack --pack-destination "$GITHUB_WORKSPACE/artifacts")
+          done
+          ls -la artifacts
 
-      - name: Bundle CLI standalone binaries (linux/macos/windows × amd64/arm64)
-        env:
-          # pkg fetches Node 22 + produces single-file binaries.
-          PKG_CACHE_PATH: ${{ runner.temp }}/pkg-cache
+      - name: Bundle CLI for each platform (linux/macos/windows x amd64/arm64)
         run: |
           set -euo pipefail
           mkdir -p artifacts/bin
 
-          # Source map for matrix expansion. OS/arch naming matches GitHub Release convention.
+          # Source map for matrix expansion. OS/arch naming follows GitHub Release convention.
           declare -a targets=(
-            "linux:amd64:x86_64-unknown-linux-gnu"
-            "linux:arm64:aarch64-unknown-linux-gnu"
-            "darwin:amd64:x86_64-apple-darwin"
-            "darwin:arm64:aarch64-apple-darwin"
-            "windows:amd64:x86_64-pc-windows-msvc"
+            "linux:amd64"
+            "linux:arm64"
+            "darwin:amd64"
+            "darwin:arm64"
+            "windows:amd64"
           )
 
           for t in "${targets[@]}"; do
-            IFS=":" read -r os arch target <<< "$t"
-            mkdir -p "artifacts/bin/gatelane-${os}-${arch}"
+            IFS=":" read -r os arch <<< "$t"
+            dir="artifacts/bin/gatelane-${os}-${arch}"
+            mkdir -p "$dir"
 
-            # Use pkg via npx (Node 22 has SEA; pkg is the most reliable cross-compile for ESM).
-            # `pkg` cannot statically follow dynamic imports, but CLI is fully static.
-            npx --yes pkg@5.8.1 \
-              --targets "node18-${target}" \
-              --output "artifacts/bin/gatelane-${os}-${arch}/gatelane" \
-              packages/cli/dist/cli.js \
-              --compress GZip \
-              || {
-                echo "::warning::pkg failed for ${os}/${arch}, falling back to plain node bundle"
-                tar -czf "artifacts/bin/gatelane-${os}-${arch}.tar.gz" \
-                  -C packages/cli dist package.json
-                continue
-              }
+            # esbuild bundles the workspace packages and their CJS
+            # dependencies into one file. `pkg` was used here before, but
+            # it cannot resolve subpath exports
+            # (`@lanefoundry/gatelane-engine/attack`) and produced
+            # binaries that threw at runtime.
+            pnpm exec esbuild packages/cli/dist/cli.js \
+              --bundle \
+              --platform=node \
+              --format=cjs \
+              --target=node22 \
+              --outfile="$dir/gatelane"
+
+            # The bundle keeps the `#!/usr/bin/env node` shebang from
+            # src/cli.ts, so it is directly executable.
+            chmod +x "$dir/gatelane"
 
             if [ "$os" = "windows" ]; then
+              printf '@echo off\r\nnode "%%~dp0gatelane" %%*\r\n' > "$dir/gatelane.cmd"
               (cd artifacts/bin && zip -r "gatelane-${os}-${arch}.zip" "gatelane-${os}-${arch}")
             else
               tar -C artifacts/bin -czf "artifacts/bin/gatelane-${os}-${arch}.tar.gz" "gatelane-${os}-${arch}"
             fi
           done
 
-      - name: Build Linux .deb
-        uses: jiro4989/build-deb-action@v1
-        with:
-          package: gatelane
-          version: ${{ steps.tag.outputs.value }}
-          package_root: artifacts/bin/gatelane-linux-amd64
-          architecture: amd64
-          maintainer: lanefoundry <noreply@lanefoundry.dev>
-          description: Pre-production safety + eval gate for AI agents.
-          license: Apache-2.0
-          homepage: https://github.com/lanefoundry/gatelane
-          section: utils
+      # A bundle that cannot start is worse than no bundle. Run it here.
+      - name: Verify the bundled CLI runs
+        run: |
+          set -euo pipefail
+          bin="artifacts/bin/gatelane-linux-amd64/gatelane"
+          node "$bin" --help
+          # The mock provider exercises the full gate path (replay -> judge ->
+          # compare -> sign) without an API key, so a broken bundle fails
+          # here instead of in a user's terminal.
+          node "$bin" gate \
+            --candidate model:gpt-4o \
+            --judges mock-judge \
+            --provider mock \
+            --judge-provider mock \
+            --report /tmp/gatelane-smoke.json
+          test -s /tmp/gatelane-smoke.json
+          echo "bundled CLI produced a report"
 
-      - name: Build Linux .rpm
-        uses: jiro4989/build-deb-action@v1
-        with:
-          package: gatelane
-          version: ${{ steps.tag.outputs.value }}
-          package_root: artifacts/bin/gatelane-linux-amd64
-          architecture: x86_64
-          format: rpm
-          maintainer: lanefoundry <noreply@lanefoundry.dev>
-          description: Pre-production safety + eval gate for AI agents.
-          license: Apache-2.0
-          homepage: https://github.com/lanefoundry/gatelane
+      # Linux packaging is third-party and must not block the npm tarballs
+      # from being attached to the release.
+      - name: Build Linux .deb and .rpm
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.tag.outputs.value }}"
 
+          # nfpm is a single static Go binary — no Docker, no Debian build
+          # environment. The previous `jiro4989/build-deb-action` could not
+          # produce an rpm at all (it silently emitted a second .deb) and
+          # ignored several of the inputs it was given.
+          curl -sSL -o /tmp/nfpm.tar.gz \
+            "https://github.com/goreleaser/nfpm/releases/download/v2.48.0/nfpm_2.48.0_Linux_x86_64.tar.gz"
+          tar -xzf /tmp/nfpm.tar.gz -C /tmp nfpm
+          chmod +x /tmp/nfpm
+
+          for arch in amd64 arm64; do
+            export NFPM_VERSION="$VERSION"
+            export NFPM_ARCH="$arch"
+            case "$arch" in
+              amd64) deb_arch=amd64; rpm_arch=x86_64 ;;
+              arm64) deb_arch=arm64; rpm_arch=aarch64 ;;
+            esac
+            /tmp/nfpm package -f packaging/linux/nfpm.yaml -p deb \
+              --target "artifacts/gatelane_${VERSION}_${deb_arch}.deb"
+            /tmp/nfpm package -f packaging/linux/nfpm.yaml -p rpm \
+              --target "artifacts/gatelane-${VERSION}-1.${rpm_arch}.rpm"
+          done
+          ls -la artifacts/*.deb artifacts/*.rpm
       - name: Stage all artifacts
         run: |
           mkdir -p artifacts/final
           cp -v artifacts/./*.tgz artifacts/final/ || true
           cp -v artifacts/bin/./*.tar.gz artifacts/final/ || true
           cp -v artifacts/bin/./*.zip  artifacts/final/ || true
-          cp -v ./*.deb artifacts/final/ 2>/dev/null || true
-          cp -v ./*.rpm artifacts/final/ 2>/dev/null || true
+          cp -v artifacts/./*.deb artifacts/final/ || true
+          cp -v artifacts/./*.rpm artifacts/final/ || true
+          ls -la artifacts/final
 
       - name: Generate SHA256SUMS
         run: |
           cd artifacts/final
-          sha256sum -- * > SHA256SUMS
+          # Exclude SHA256SUMS itself — the redirect creates the file before
+          # the glob is expanded, so it would otherwise hash an empty file.
+          ls | grep -v '^SHA256SUMS$' | xargs sha256sum -- > SHA256SUMS
           cat SHA256SUMS
 
       - name: Sign SHA256SUMS (cosign keyless)
@@ -276,6 +301,10 @@ jobs:
   npm:
     name: Publish to npm
     needs: build
+    # Skipped (visible in the UI) until the npm org, token and variable
+    # exist. Packaging and GitHub Release assets do not depend on this, so
+    # tagging still produces installable tarballs without npm credentials.
+    if: vars.ENABLE_NPM_PUBLISH == 'true'
     runs-on: ubuntu-latest
     environment:
       name: npm-publish
@@ -295,31 +324,66 @@ jobs:
       - name: Install + build
         run: |
           pnpm install --frozen-lockfile
-          pnpm --filter @lanefoundry/gatelane-sdk build
-          pnpm --filter @lanefoundry/gatelane-engine build
-          pnpm --filter @lanefoundry/gatelane-cli build
+          pnpm -r --filter "./packages/*" build
+
+      - name: Resolve version
+        id: version
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          echo "value=${TAG#v}" >> "$GITHUB_OUTPUT"
+          echo "Publishing version ${TAG#v}"
 
       - name: Stamp version
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          for pkg in packages/gatelane-sdk packages/gatelane-engine packages/cli; do
-            node -e "const p=require('./${pkg}/package.json');p.version='${VERSION}';require('fs').writeFileSync('./${pkg}/package.json',JSON.stringify(p,null,2));"
+          VERSION="${{ steps.version.outputs.value }}"
+          for pkg in packages/gatelane-sdk packages/gatelane-engine packages/source-prod-slice packages/cli packages/ci-adapter; do
+            node -e "const p=require('./${pkg}/package.json');p.version='${VERSION}';require('fs').writeFileSync('./${pkg}/package.json',JSON.stringify(p,null,2)+'\n');"
           done
 
-      - name: Publish SDK
-        run: pnpm --filter @lanefoundry/gatelane-sdk publish --provenance --no-git-checks
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      # Guard rail: a pre-release version must never be published to latest.
+      - name: Verify version is a stable semver
+        run: |
+          VERSION="${{ steps.version.outputs.value }}"
+          if echo "$VERSION" | grep -qE '(^v|-|dev|alpha|beta|canary|rc)'; then
+            echo "::error::Refusing to publish '${VERSION}' to the latest tag."
+            exit 1
+          fi
 
-      - name: Publish engine
-        run: pnpm --filter @lanefoundry/gatelane-engine publish --provenance --no-git-checks
+      - name: Publish packages
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.value }}"
+          # Dependency order: sdk -> engine -> source-prod-slice -> cli -> ci-adapter
+          for pkg in \
+            packages/gatelane-sdk \
+            packages/gatelane-engine \
+            packages/source-prod-slice \
+            packages/cli \
+            packages/ci-adapter; do
+            echo "::group::publishing ${pkg}@${VERSION}"
+            (cd "$pkg" && pnpm publish --tag latest --access public --provenance --no-git-checks)
+            echo "::endgroup::"
+          done
 
-      - name: Publish CLI
-        run: pnpm --filter @lanefoundry/gatelane-cli publish --provenance --no-git-checks
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Verify the packages are actually on the registry
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.value }}"
+          for name in \
+            @lanefoundry/gatelane-sdk \
+            @lanefoundry/gatelane-engine \
+            @lanefoundry/source-prod-slice \
+            @lanefoundry/gatelane-cli \
+            @lanefoundry/gatelane-ci-adapter; do
+            published="$(npm view "${name}@latest" version)"
+            echo "${name}@latest -> ${published}"
+            if [ "$published" != "$VERSION" ]; then
+              echo "::error::${name}@latest is ${published}, expected ${VERSION}"
+              exit 1
+            fi
+          done
 
   # ----------------------------------------------------------------------
   # 5. Publish Python SDK to PyPI (trusted publishing via OIDC)
@@ -327,6 +391,7 @@ jobs:
   pypi:
     name: Publish to PyPI
     needs: build
+    if: vars.ENABLE_PYPI_PUBLISH == 'true'
     runs-on: ubuntu-latest
     environment:
       name: pypi-publish
@@ -348,10 +413,21 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm --filter @lanefoundry/gatelane-sdk build
 
+      # The checked-in version is a `-dev` placeholder. Stamp the release
+      # version explicitly instead of relying on a VCS-derived version,
+      # which silently kept publishing 0.0.1-dev.
+      - name: Stamp version
+        working-directory: packages/gatelane-sdk-py
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          VERSION="${TAG#v}"
+          sed -i -E "s/^version = \".*\"/version = \"${VERSION}\"/" pyproject.toml
+          grep -E '^version = ' pyproject.toml
+
       - name: Build Python wheel + sdist
         working-directory: packages/gatelane-sdk-py
         run: |
-          python -m pip install --upgrade pip build hatchling hatch-vcs
+          python -m pip install --upgrade pip build
           python -m build
 
       - name: Publish with trusted publishing (OIDC)

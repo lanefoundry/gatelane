@@ -116,6 +116,57 @@ pnpm dev
 
 gatelane 現在在 `http://localhost:8787` 上提供本地 API。
 
+### 在其他專案使用
+
+有三種方式可以用，挑一種。
+
+**1. npm registry**（需要 `lanefoundry` org 和 token，見
+[`docs/distribution.md`](docs/distribution.md)）：
+
+```bash
+pnpm add @lanefoundry/gatelane-sdk@canary      # 捕獲 client + storage adapter
+pnpm add @lanefoundry/gatelane-engine@canary   # 選用：把 engine 嵌進自己的 runtime
+pnpm add -D @lanefoundry/gatelane-cli@canary   # `gatelane` CLI
+```
+
+**2. GitHub Release tarball** — 不需要任何 registry 帳號。推一個
+`v*.*.*` tag 就會自動建置並把 tarball 附到 release 上；
+`.github/workflows/pack.yml` 另外會在每次 push 上傳 artifact 供測試：
+
+```bash
+V=v0.1.0
+VER=${V#v}
+BASE=https://github.com/lanefoundry/gatelane/releases/download/$V
+npm i \
+  "$BASE/lanefoundry-gatelane-sdk-$VER.tgz" \
+  "$BASE/lanefoundry-gatelane-engine-$VER.tgz" \
+  "$BASE/lanefoundry-source-prod-slice-$VER.tgz" \
+  "$BASE/lanefoundry-gatelane-cli-$VER.tgz" \
+  "$BASE/lanefoundry-gatelane-ci-adapter-$VER.tgz"
+```
+
+**3. 本機打包** — 離線使用，或什麼都還沒發佈時。
+`pnpm pack` 會把 `workspace:*` 改寫成實際版本，行為和已發佈的套件一致：
+
+```bash
+pnpm install
+pnpm -r --filter "./packages/*" build
+pnpm pack:all          # -> artifacts/npm/*.tgz
+
+# 在要使用 gatelane 的專案
+npm i /path/to/gatelane/artifacts/npm/*.tgz
+```
+
+幾個容易踩到的點：
+
+- 所有 tarball 要在**同一個指令**一起安裝。CLI 依賴 SDK、engine 和
+  `source-prod-slice`，一個一個裝會讓 npm 去 registry 找還不存在的版本。
+- **不要**直接安裝 repo 根目錄（`npm i github:lanefoundry/gatelane`）。
+  它是 `private` 的 workspace 根，沒有 `main`/`exports`，裝到的會是空殼。
+- 用 git 安裝子目錄（`pnpm add github:lanefoundry/gatelane#path:packages/cli`）
+  在 pnpm 10 會失敗：build script 預設被擋，而且 `workspace:*` 只有在
+  `pack`/`publish` 時才會被改寫。
+
 ### 捕獲單一 LLM 呼叫
 
 透過 Worker API 整合到代理端：

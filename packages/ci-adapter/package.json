@@ -9,6 +9,10 @@
   "bin": {
     "gatelane-ci": "./dist/action.js"
   },
+  "files": ["dist"],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc -b"
   },

@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling", "hatch-vcs"]
+requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
@@ -58,11 +58,11 @@ include = ["src/gatelane_sdk/py.typed"]
 include = ["src/gatelane_sdk", "README.md", "LICENSE"]
 exclude = ["tests/**", "**/.pytest_cache", ".github/**"]
 
-[tool.hatch.version]
-source = "vcs"
-
-[tool.hatch.version.raw-options]
-local_scheme = "no-local-version"
+# NOTE: the version above is a `-dev` placeholder for local work. Release
+# builds overwrite it from the git tag in .github/workflows/release.yml.
+# Do not reintroduce `[tool.hatch.version] source = "vcs"` here: hatchling
+# ignores it while a static `version` field exists, which made every
+# publish report 0.0.1-dev.
 
 # --- dev tooling ---------------------------------------------------------
 [tool.pytest.ini_options]

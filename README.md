@@ -116,6 +116,60 @@ pnpm dev
 
 gatelane now exposes a local API on `http://localhost:8787`.
 
+### Use it from another project
+
+There are three ways to consume the workspace packages. Pick one.
+
+**1. npm registry** (requires the `lanefoundry` org + token, see
+[`docs/distribution.md`](docs/distribution.md)):
+
+```bash
+pnpm add @lanefoundry/gatelane-sdk@canary      # capture client + storage adapters
+pnpm add @lanefoundry/gatelane-engine@canary   # optional: embed the engine
+pnpm add -D @lanefoundry/gatelane-cli@canary   # `gatelane` CLI
+```
+
+**2. GitHub Release tarballs** — no registry account needed. Pushing a
+`v*.*.*` tag builds and attaches the tarballs to the release automatically;
+`.github/workflows/pack.yml` also uploads per-commit artifacts for testing:
+
+```bash
+V=v0.1.0
+VER=${V#v}
+BASE=https://github.com/lanefoundry/gatelane/releases/download/$V
+npm i \
+  "$BASE/lanefoundry-gatelane-sdk-$VER.tgz" \
+  "$BASE/lanefoundry-gatelane-engine-$VER.tgz" \
+  "$BASE/lanefoundry-source-prod-slice-$VER.tgz" \
+  "$BASE/lanefoundry-gatelane-cli-$VER.tgz" \
+  "$BASE/lanefoundry-gatelane-ci-adapter-$VER.tgz"
+```
+
+**3. Local pack** — offline, or before anything has been released.
+`pnpm pack` rewrites `workspace:*` to concrete versions, so the tarballs
+behave exactly like published packages:
+
+```bash
+pnpm install
+pnpm -r --filter "./packages/*" build
+pnpm pack:all          # -> artifacts/npm/*.tgz
+
+# in the consuming project
+npm i /path/to/gatelane/artifacts/npm/*.tgz
+```
+
+Gotchas worth knowing:
+
+- Install every tarball in a **single** command. The CLI depends on the SDK,
+  engine and `source-prod-slice`; installing them one at a time makes npm
+  look up versions that are not on the registry yet.
+- Do **not** install the repository root (`npm i github:lanefoundry/gatelane`).
+  It is a private workspace root with no `main`/`exports`, so you get an
+  empty package.
+- Git installs of a subdirectory (`pnpm add github:lanefoundry/gatelane#path:packages/cli`)
+  fail on pnpm 10: build scripts are blocked by default, and `workspace:*`
+  dependencies are only rewritten during `pack`/`publish`.
+
 ### Capture a single LLM call
 
 One-line integration on the agent side via the Worker API:
