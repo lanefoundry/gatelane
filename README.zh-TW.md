@@ -120,14 +120,15 @@ gatelane 現在在 `http://localhost:8787` 上提供本地 API。
 
 有三種方式可以用，挑一種。
 
-**1. npm registry**（需要 `lanefoundry` org 和 token，見
-[`docs/distribution.md`](docs/distribution.md)）：
+**1. npm registry** — 正式發佈的通道，不需要額外設定：
 
 ```bash
-pnpm add @lanefoundry/gatelane-sdk@canary      # 捕獲 client + storage adapter
-pnpm add @lanefoundry/gatelane-engine@canary   # 選用：把 engine 嵌進自己的 runtime
-pnpm add -D @lanefoundry/gatelane-cli@canary   # `gatelane` CLI
+pnpm add @lanefoundry/gatelane-sdk              # 捕獲 client + storage adapter
+pnpm add @lanefoundry/gatelane-engine           # 選用：把 engine 嵌進自己的 runtime
+pnpm add -D @lanefoundry/gatelane-cli           # `gatelane` CLI
 ```
+
+任何一個加上 `@canary` 就會追蹤 `main` 上最新的 build，而不是最新穩定版。
 
 **2. GitHub Release tarball** — 不需要任何 registry 帳號。推一個
 `v*.*.*` tag 就會自動建置並把 tarball 附到 release 上；

@@ -120,14 +120,16 @@ gatelane now exposes a local API on `http://localhost:8787`.
 
 There are three ways to consume the workspace packages. Pick one.
 
-**1. npm registry** (requires the `lanefoundry` org + token, see
-[`docs/distribution.md`](docs/distribution.md)):
+**1. npm registry** — the published channel, no extra setup needed:
 
 ```bash
-pnpm add @lanefoundry/gatelane-sdk@canary      # capture client + storage adapters
-pnpm add @lanefoundry/gatelane-engine@canary   # optional: embed the engine
-pnpm add -D @lanefoundry/gatelane-cli@canary   # `gatelane` CLI
+pnpm add @lanefoundry/gatelane-sdk              # capture client + storage adapters
+pnpm add @lanefoundry/gatelane-engine           # optional: embed the engine
+pnpm add -D @lanefoundry/gatelane-cli           # `gatelane` CLI
 ```
+
+Add `@canary` to any of them to track the newest build from `main`
+instead of the latest stable release.
 
 **2. GitHub Release tarballs** — no registry account needed. Pushing a
 `v*.*.*` tag builds and attaches the tarballs to the release automatically;

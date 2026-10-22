@@ -81,16 +81,19 @@ criterion passes, the channel is aspirational, not shipped.
 **What ships**
 
 - `@lanefoundry/gatelane-sdk` — capture client, type-only shapes, storage
-  adapters (`storage-fs`, `storage-http`). Today: `0.0.1-dev`.
+  adapters (`storage-fs`, `storage-http`).
 - `@lanefoundry/gatelane-engine` — replay, compare, judge, sign. Runs in
   the Worker; published for users that want to embed the engine into a
-  custom runtime. Today: `0.0.2-dev`.
+  custom runtime.
 - `@lanefoundry/source-prod-slice` — freeze / replay / compare / canary
-  orchestration. Runtime dependency of the CLI. Today: `0.0.1-dev`.
-- `@lanefoundry/gatelane-cli` — `bin: { gatelane: ... }`. Today:
-  `0.0.1-dev`.
+  orchestration. Runtime dependency of the CLI.
+- `@lanefoundry/gatelane-cli` — `bin: { gatelane: ... }`.
 - `@lanefoundry/gatelane-ci-adapter` — `bin: { gatelane-ci: ... }`, GitHub
-  Actions glue. Today: `0.0.0-dev`.
+  Actions glue.
+
+All five share one version (single version policy). The current stable
+release is **0.1.0**; `latest` points at it and `canary` at the newest
+build from `main`.
 
 **Where**
 
@@ -163,13 +166,13 @@ npm i \
 
 **Acceptance criterion**
 
-- [ ] `pnpm view @lanefoundry/gatelane-sdk version` returns a non-dev
+- [x] `pnpm view @lanefoundry/gatelane-sdk version` returns a non-dev
       semver tag.
-- [ ] `pnpm dlx @lanefoundry/gatelane-cli --help` works on Node 22+ with
+- [x] `pnpm dlx @lanefoundry/gatelane-cli --help` works on Node 22+ with
       zero local clone.
-- [ ] CI packs the workspace, installs the tarballs into a clean project
+- [x] CI packs the workspace, installs the tarballs into a clean project
       and imports the SDK, so an empty or unresolvable package cannot ship.
-- [ ] A `v*.*.*` tag produces a GitHub Release with the five tarballs
+- [x] A `v*.*.*` tag produces a GitHub Release with the five tarballs
       attached and installable via a plain `npm i <url>`.
 
 **Release runbook**
@@ -212,11 +215,13 @@ One-time prerequisites:
 
    ```bash
    gh variable set ENABLE_NPM_CANARY --body true   # Variables tab
-   gh variable set ENABLE_NPM_PUBLISH --body true  # Variables tab (stable releases)
    gh secret set NPM_TOKEN                         # Secrets tab, paste token
    ```
 
-   These two variables are independent on purpose:
+   `ENABLE_NPM_PUBLISH` is not needed: a stable tag publishes to npm
+   unless it is explicitly set to `false`.
+
+   These variables are independent on purpose:
 
    | Variable | Effect |
    |---|---|
@@ -361,10 +366,16 @@ pip install gatelane-sdk
 
 **Acceptance criterion**
 
-- [ ] `pyproject.toml` with PEP 621 metadata, `py.typed` marker, and
+- [x] `pyproject.toml` with PEP 621 metadata, `py.typed` marker, and
       `build-system = hatchling`.
 - [ ] `pip install gatelane-sdk` from a clean venv succeeds.
 - [ ] CI publishes on tag via `pypa/gh-action-pypi-publish`.
+
+  The publish job exists in `release.yml` and is gated behind the
+  `ENABLE_PYPI_PUBLISH` variable. It still needs a PyPI trusted
+  publisher configured for the `gatelane-sdk` project, and the package
+  name has to be claimed on PyPI first. The version is stamped from the
+  git tag, so the Python SDK ships the same version as the JS packages.
 
 ### 3.3 Docker — `ghcr.io/lanefoundry/gatelane`
 
@@ -391,10 +402,10 @@ docker run --rm -p 8787:8787 -p 8788:8788 \
 
 **Acceptance criterion**
 
-- [ ] `Dockerfile` at repo root, multi-stage build (Node 22 → runtime).
+- [x] `Dockerfile` at repo root, multi-stage build (Node 22 → runtime).
 - [ ] `docker run` from a machine with no Node installed succeeds and
       exposes both ports.
-- [ ] CI builds and pushes the image on tag; multi-arch (`linux/amd64`,
+- [x] CI builds and pushes the image on tag; multi-arch (`linux/amd64`,
       `linux/arm64`).
 
 ### 3.4 Homebrew — `lanefoundry/tap/gatelane`
@@ -494,10 +505,12 @@ sudo dnf install ./gatelane-0.1.0-1.x86_64.rpm
 
 **Acceptance criterion**
 
-- [ ] CI builds `.deb` and `.rpm` for `x86_64` and `aarch64`.
+- [x] CI builds `.deb` and `.rpm` for `x86_64` and `aarch64` (nfpm, from
+      `packaging/linux/nfpm.yaml`).
 - [ ] `dpkg -i` and `dnf install` complete cleanly on a fresh container.
 - [ ] Packages signed with the `lanefoundry` GPG key; signature file
-      attached to the release.
+      attached to the release. Only `SHA256SUMS` is signed today, with
+      cosign keyless signing.
 
 ### 3.8 Tarball — `codeload.github.com`
 

@@ -88,7 +88,7 @@ Legend:
 | `gatelane snapshot` | · (planned; use `freeze-slice`) | `GET /v1/captures` |
 | `gatelane canary start/status/observe/advance/rollback/tick` | · (planned; HTTP API only) | `/v1/canaries/*` |
 | `gatelane init` | · (planned) | n/a |
-| `gatelane serve` (worker + dashboard) | · | n/a |
+| `gatelane serve` (worker + dashboard) | · (planned; the Worker and the dashboard are separate apps today) | n/a |
 
 CLI is JS-only in v1; Python SDK users go straight to the HTTP API.
 

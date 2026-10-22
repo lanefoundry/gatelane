@@ -76,6 +76,7 @@ packages/gatelane-engine        (depends on gatelane-sdk)
     |
 packages/source-prod-slice      (depends on gatelane-sdk + gatelane-engine)
 packages/cli                    (depends on gatelane-sdk + gatelane-engine + source-prod-slice)
+packages/ci-adapter             (depends on gatelane-sdk)
     ^
     |
 apps/worker                     (depends on gatelane-sdk + gatelane-engine + hono)
@@ -83,18 +84,20 @@ apps/worker                     (depends on gatelane-sdk + gatelane-engine + hon
 
 ### Package inventory
 
-| Package                      | npm name                          | Purpose                                                        |
-|------------------------------|-----------------------------------|----------------------------------------------------------------|
-| `packages/gatelane-sdk`      | `@lanefoundry/gatelane-sdk`       | Capture SDK, dataset, gate, promotion, pluggable storage       |
-| `packages/gatelane-engine`   | `@lanefoundry/gatelane-engine`    | Unified engine: LLM caller, judge, replay, compare, sign, security scan, tracing, OTel export |
-| `packages/source-prod-slice` | `@lanefoundry/source-prod-slice`  | Production slice: freeze-slice, replay-batch, canary, signed report, audit export |
-| `packages/cli`               | `@lanefoundry/gatelane-cli`       | CLI interface (`gatelane gate`, `freeze-slice`) |
-| `packages/ci-adapter`        | `@lanefoundry/ci-adapter`         | CI/CD integration (GitHub Actions)                             |
-| `apps/worker`                | `@lanefoundry/gatelane-worker`    | Cloudflare Worker; Hono HTTP server                            |
+| Package                      | npm name                             | Purpose                                                        |
+|------------------------------|--------------------------------------|----------------------------------------------------------------|
+| `packages/gatelane-sdk`      | `@lanefoundry/gatelane-sdk`          | Capture SDK, dataset, gate, promotion, pluggable storage       |
+| `packages/gatelane-engine`   | `@lanefoundry/gatelane-engine`       | Unified engine: LLM caller, judge, replay, compare, sign, security scan, tracing, OTel export |
+| `packages/source-prod-slice` | `@lanefoundry/source-prod-slice`     | Production slice: freeze-slice, replay-batch, canary, signed report, audit export |
+| `packages/cli`               | `@lanefoundry/gatelane-cli`          | CLI interface (`gatelane gate`, `freeze-slice`) |
+| `packages/ci-adapter`        | `@lanefoundry/gatelane-ci-adapter`   | CI/CD integration (GitHub Actions)                             |
+| `apps/worker`                | `@lanefoundry/gatelane-worker`       | Cloudflare Worker; Hono HTTP server                            |
+| `apps/dashboard`             | — (private)                          | React + Vite dashboard                                         |
 
 ### Engine exports
 
-The engine (`packages/engine/src/index.ts`) surfaces six public functions:
+The engine (`packages/gatelane-engine/src/index.ts`) surfaces six public
+functions:
 
 | Export               | Module          | Role                                          |
 |----------------------|-----------------|-----------------------------------------------|
