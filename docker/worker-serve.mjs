@@ -6,7 +6,7 @@
  * In a plain Node container those bindings don't exist, so this shim
  * provides drop-in stand-ins:
  *
- *   - D1  → node:sqlite (DatabaseSync), schema from packages/shared/schema/d1.sql
+ *   - D1  → node:sqlite (DatabaseSync), schema from apps/worker/migrations/*.sql
  *   - R2  → filesystem under ${GATELANE_HOME}/captures
  *   - KV  → filesystem under ${GATELANE_HOME}/kv
  *
@@ -19,7 +19,7 @@
  */
 import { createServer } from "node:http";
 import { DatabaseSync } from "node:sqlite";
-import { mkdir, readFile, writeFile, rm } from "node:fs/promises";
+import { mkdir, readFile, writeFile, rm, readdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 
@@ -28,7 +28,7 @@ const HOME = process.env.GATELANE_HOME ?? "/data";
 const CAPTURES_DIR = join(HOME, "captures");
 const KV_DIR = join(HOME, "kv");
 const DB_PATH = join(HOME, "gatelane.db");
-const SCHEMA_PATH = "/app/worker/d1.sql";
+const SCHEMA_DIR = "/app/worker/migrations";
 
 // ---------------------------------------------------------------------------
 // D1-like adapter over node:sqlite
@@ -116,10 +116,20 @@ class KVLike {
 async function main() {
   await mkdir(HOME, { recursive: true });
 
-  // Init SQLite from the D1 schema (idempotent — CREATE TABLE IF NOT EXISTS).
+  // Init SQLite from the D1 migrations (idempotent — CREATE TABLE IF NOT
+  // EXISTS). The migrations are applied in filename order, the same way
+  // wrangler d1 migrations apply them.
   const db = new DatabaseSync(DB_PATH);
-  const schema = await readFile(SCHEMA_PATH, "utf8");
-  db.exec(schema);
+  const migrations = (await readdir(SCHEMA_DIR))
+    .filter((f) => f.endsWith(".sql"))
+    .sort();
+  if (migrations.length === 0) {
+    throw new Error(`no .sql migrations found in ${SCHEMA_DIR}`);
+  }
+  for (const migration of migrations) {
+    const sql = await readFile(join(SCHEMA_DIR, migration), "utf8");
+    db.exec(sql);
+  }
 
   const env = {
     DB: new D1Like(db),

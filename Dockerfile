@@ -10,14 +10,11 @@ WORKDIR /repo
 
 # Copy lockfiles + manifests first for layer cache
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
-COPY packages/shared/package.json packages/shared/
-COPY packages/engine/package.json packages/engine/
 COPY packages/gatelane-sdk/package.json packages/gatelane-sdk/
 COPY packages/gatelane-engine/package.json packages/gatelane-engine/
-COPY packages/cli/package.json packages/cli/
-COPY packages/mode-red-team/package.json packages/mode-red-team/
-COPY packages/mode-backtest/package.json packages/mode-backtest/
 COPY packages/source-prod-slice/package.json packages/source-prod-slice/
+COPY packages/cli/package.json packages/cli/
+COPY packages/ci-adapter/package.json packages/ci-adapter/
 COPY apps/worker/package.json apps/worker/
 COPY apps/dashboard/package.json apps/dashboard/
 
@@ -31,18 +28,23 @@ COPY apps apps
 
 # Build the TS packages, then bundle the worker into a single self-contained
 # ESM file so the runtime image needs no node_modules.
-RUN pnpm --filter @gatelane/shared build && \
-    pnpm --filter @lanefoundry/gatelane-sdk build && \
+RUN pnpm --filter @lanefoundry/gatelane-sdk build && \
     pnpm --filter @lanefoundry/gatelane-engine build && \
     pnpm --filter @lanefoundry/gatelane-cli build && \
-    pnpm --filter @gatelane/dashboard build && \
-    pnpm --filter @gatelane/worker build && \
+    pnpm --filter @lanefoundry/gatelane-dashboard build && \
+    pnpm --filter @lanefoundry/gatelane-worker build && \
     pnpm exec esbuild apps/worker/src/worker.ts \
       --bundle \
       --platform=node \
       --format=esm \
       --external:node:* \
-      --outfile=apps/worker/dist/worker.bundle.mjs
+      --outfile=apps/worker/dist/worker.bundle.mjs && \
+    pnpm exec esbuild packages/cli/dist/cli.js \
+      --bundle \
+      --platform=node \
+      --format=cjs \
+      --target=node22 \
+      --outfile=packages/cli/dist/gatelane.bundle.cjs
 
 # ---- runtime stage ----
 FROM node:22-bookworm-slim AS runtime
@@ -63,21 +65,24 @@ ENV NODE_ENV=production \
     GATELANE_WORKER_PORT=8787 \
     GATELANE_DASHBOARD_PORT=8788 \
     GATELANE_RUNTIME=container \
-    PATH="/usr/local/lib/node_modules/@lanefoundry/gatelane-cli/bin:$PATH"
+    PATH="/usr/local/bin:$PATH"
 
 WORKDIR /app
 
 # Worker: esbuild bundle + D1 schema + container runtime shim
 COPY --from=build --chown=gatelane:gatelane /repo/apps/worker/dist/worker.bundle.mjs /app/worker/worker.bundle.mjs
-COPY --from=build --chown=gatelane:gatelane /repo/packages/shared/schema/d1.sql /app/worker/d1.sql
+COPY --from=build --chown=gatelane:gatelane /repo/apps/worker/migrations /app/worker/migrations
 COPY docker/worker-serve.mjs /app/worker/worker-serve.mjs
 
 # Dashboard: static assets served by `serve`
 COPY --from=build --chown=gatelane:gatelane /repo/apps/dashboard/dist /app/dashboard/dist/
 
-# CLI (published surface, for `gatelane` in the container)
-COPY --from=build --chown=gatelane:gatelane /repo/packages/cli/dist /usr/local/lib/node_modules/@lanefoundry/gatelane-cli/
-COPY --from=build --chown=gatelane:gatelane /repo/packages/cli/package.json /usr/local/lib/node_modules/@lanefoundry/gatelane-cli/
+# CLI (published surface, for `gatelane` in the container). The CLI is
+# copied as a single esbuild bundle: copying only `dist/` would leave the
+# workspace dependencies (@lanefoundry/gatelane-engine and friends)
+# unresolvable inside the image.
+COPY --from=build --chown=gatelane:gatelane /repo/packages/cli/dist/gatelane.bundle.cjs /usr/local/bin/gatelane
+RUN chmod 0755 /usr/local/bin/gatelane
 
 # entrypoint + supervisor
 COPY docker/entrypoint.sh /usr/local/bin/gatelane-entrypoint
