@@ -306,6 +306,9 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: gatelane ${{ github.ref_name }}
           generate_release_notes: true
+          # Replace assets that already exist, so re-running the release
+          # does not leave a stale file next to its new checksum.
+          overwrite_files: true
           # The build job stages everything flat into artifacts/final/, and
           # upload-artifact strips that prefix, so the download lands the
           # files directly in artifacts/. The standalone CLI archives are
