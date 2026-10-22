@@ -1,10 +1,17 @@
 #!/usr/bin/env node
 /**
- * Remove old canary versions from the registry.
+ * Remove old canary versions and name-reservation placeholders from the
+ * registry.
  *
  * Every push to main publishes an immutable `0.0.0-canary-<sha>` version
  * to five packages, so the version list grows without bound. This keeps
  * the newest few and unpublishes the rest.
+ *
+ * The `0.0.0-stage` placeholders were published by hand to reserve the
+ * package names before the packages existed. Now that the real packages
+ * are on the registry the placeholders are dead weight: they are not on
+ * any dist-tag, but they show up in the version list and in
+ * `npm view <pkg> versions`.
  *
  * npm only allows unpublishing a version that was published less than
  * 72 hours ago, so this is a best-effort cleanup of recent versions.
@@ -34,6 +41,14 @@ function flag(name, fallback) {
 
 const keep = flag("keep", 5);
 const maxAgeHours = flag("max-age-hours", 72);
+const dryRun = args.includes("--dry-run") || process.env.DRY_RUN === "1";
+if (dryRun) {
+  const i = args.indexOf("--dry-run");
+  if (i !== -1) args.splice(i, 1);
+}
+// Name-reservation placeholders. They are not on any dist-tag and are
+// no longer needed now that the real packages exist.
+const placeholders = new Set(["0.0.0-stage"]);
 const packages = args.length
   ? args
   : [
@@ -57,16 +72,20 @@ function npmView(spec, field) {
   }
 }
 
-/** Milliseconds since the epoch, or null when npm has no timestamp. */
-function publishedAt(spec) {
-  const raw = npmView(spec, "time");
-  if (!raw) return null;
+/** Publish timestamps, keyed by version, from `npm view <pkg> time`. */
+function publishTimes(name) {
+  const raw = npmView(name, "time");
+  if (!raw) return new Map();
   try {
     const parsed = JSON.parse(raw);
-    const value = parsed[spec];
-    return value ? Date.parse(value) : null;
+    const times = new Map();
+    for (const [version, value] of Object.entries(parsed)) {
+      const at = Date.parse(value);
+      if (Number.isFinite(at)) times.set(version, at);
+    }
+    return times;
   } catch {
-    return null;
+    return new Map();
   }
 }
 
@@ -92,25 +111,40 @@ for (const name of packages) {
     continue;
   }
 
-  const canaries = versions.filter((v) => v.includes("-canary-"));
-  if (canaries.length <= keep) {
+  const times = publishTimes(name);
+
+  // The version list is ordered by semver, not by publish time — the
+  // canary suffix is a commit sha, so `0.0.0-canary-3b5b5b3` sorts
+  // before `0.0.0-canary-5535b4e` even though it is newer. Sort by the
+  // actual publish time before deciding what to keep.
+  const canaries = versions
+    .filter((v) => v.includes("-canary-"))
+    .sort((a, b) => (times.get(b) ?? 0) - (times.get(a) ?? 0));
+
+  const stale = [
+    ...canaries.slice(keep),
+    ...versions.filter((v) => placeholders.has(v)),
+  ];
+
+  if (stale.length === 0) {
     console.log(`✓ ${name}: ${canaries.length} canary version(s), nothing to prune`);
     continue;
   }
 
-  // Newest first, so the tail is what we remove.
-  const ordered = [...canaries].reverse();
-  const stale = ordered.slice(keep);
-
   for (const version of stale) {
-    const at = publishedAt(`${name}@${version}`);
-    if (at === null) {
+    const at = times.get(version);
+    if (at === undefined) {
       console.log(`  - ${name}@${version}: no publish timestamp, keeping`);
       continue;
     }
     const ageHours = (now - at) / 3_600_000;
     if (ageHours > maxAgeHours) {
       console.log(`  - ${name}@${version}: ${Math.round(ageHours)}h old, npm will not unpublish it`);
+      continue;
+    }
+    if (dryRun) {
+      console.log(`  → would unpublish ${name}@${version}`);
+      removed++;
       continue;
     }
     try {
