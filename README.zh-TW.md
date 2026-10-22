@@ -287,7 +287,19 @@ pnpm lint             # 執行 ESLint（flat config + typescript-eslint）
 pnpm test             # 執行測試（vitest）
 pnpm format:check     # 檢查 Prettier 格式
 pnpm format           # 以 Prettier 自動格式化
+pnpm pack:all         # 把五個可發佈的套件打包到 artifacts/npm
+pnpm verify:pack      # 把這些 tarball 裝進臨時專案並實際使用它們
 ```
+
+### 發佈工具
+
+| 工具 | 用途 |
+|---|---|
+| `tools/pack-all.mjs` | 打包五個可發佈的套件。`pnpm pack` 會把 `workspace:*` 改寫成實際版本，所以 tarball 的行為跟已發佈的套件一致。 |
+| `tools/verify-pack.mjs` | 把 tarball 裝進一個空專案，import SDK 並跑 CLI。CI 每次 push 都會跑，所以空殼或依賴解析不到的套件不可能發出去。 |
+| `tools/resolve-workspace-deps.mjs` | 把 `workspace:*` 改寫成實際版本。`npm publish` **不會**像 `pnpm publish` 那樣自動改寫，而發佈 workflow 用 `npm publish` 才能走 npm 的 OIDC trusted publishing。只在發佈情境下執行。 |
+| `tools/npm-dist-tags.mjs` | 套用 dist-tag 策略：`canary` 指向最新 build，`latest` 指向最新穩定版。 |
+| `tools/prune-canary.mjs` | 清除舊的 canary 版本。npm 只允許在發佈後 72 小時內 unpublish，所以這是盡力而為。 |
 
 ### Worker API 端點
 

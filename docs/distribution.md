@@ -193,7 +193,7 @@ One-time prerequisites:
    # -> 200; before creation this returned {"error":"Scope not found"}
    ```
 
-2. **Create the token**: avatar → **Access Tokens** → **Generate New Token**
+2. **Create the token**: avatar → **Access Tokens → Generate New Token**
    → **Granular Access Token**.
    - Expiration: 90 days (rotate before it lapses)
    - **Packages and scopes**: `Read and write`
@@ -226,6 +226,62 @@ One-time prerequisites:
    So a tag can be pushed **before** the npm org exists, and consumers
    install from the GitHub Release tarballs.
 
+4. **Switch to OIDC trusted publishing** (recommended — and the reason
+   `NPM_TOKEN` can be deleted afterwards).
+
+   npm's long-lived tokens are the weak link: they can leak through logs
+   and need manual rotation. Trusted publishing replaces them with a
+   short-lived OIDC token that npm mints for one specific workflow.
+
+   For **each** of the five packages, on npmjs.com → Packages →
+   `@lanefoundry/<package>` → Settings → Trusted Publisher:
+
+   | Field | Value |
+   |---|---|
+   | Provider | GitHub Actions |
+   | Organization or user | `lanefoundry` |
+   | Repository | `gatelane` |
+   | Workflow filename | `publish-npm.yml` |
+   | Environment name | `npm-canary` |
+   | Allowed actions | `npm publish` ✅, `npm dist-tag` ✅ |
+
+   Then add a second trusted publisher on the same package for the
+   stable release workflow:
+
+   | Field | Value |
+   |---|---|
+   | Workflow filename | `release.yml` |
+   | Environment name | `npm-publish` |
+   | Allowed actions | `npm publish` ✅, `npm dist-tag` ✅ |
+
+   Notes:
+   - npm allows up to 10 trusted publishers per package, so two is fine.
+   - **Existing trusted publisher connections cannot be edited.** Delete
+     and recreate if you get the fields wrong.
+   - A new configuration must complete its first successful publish
+     **within 2 days** or it expires.
+   - `npm dist-tag` over OIDC needs npm ≥ 11.21.0, and `npm dist-tag`
+     is what keeps `latest` on the newest stable version instead of the
+     newest canary. The workflows install npm `^11.21.0` for that reason
+     and run on Node 24.
+   - npm does not support `npm unpublish` over OIDC, so the canary
+     cleanup job needs the fallback token. Keep `NPM_TOKEN` until the
+     cleanup is not wanted any more, or accept that old canaries stay.
+
+   After a successful OIDC publish, tighten the package:
+
+   npmjs.com → the package → Settings → Publishing access →
+   **"Require two-factor authentication and disallow tokens"**.
+
+   The trusted publisher keeps working; the token stops working.
+
+5. **Verify** the setup:
+
+   ```bash
+   npm view @lanefoundry/gatelane-sdk@canary version
+   # check that the workflow log says the publish was OIDC-authenticated
+   ```
+
 Canary (runs on every push to `main` once enabled):
 
 ```bash
@@ -236,24 +292,29 @@ gh workflow run "Publish npm (canary)" -f publish=true
 npm view @lanefoundry/gatelane-sdk@canary version
 ```
 
-Consumers install `@canary` until a stable release exists.
+Consumers install `@canary` until a stable release exists. Old canary
+versions are pruned by the `prune-canary` job — npm only allows
+unpublishing within 72 hours of a publish, so this is a best-effort
+cleanup of recent versions.
 
 Stable:
 
 ```bash
-pnpm changeset          # describe the change, pick a bump
-pnpm changeset:version  # apply versions + changelog
-git commit -am "chore: release"
 git tag v0.1.0          # stable semver only — no -rc / -dev suffix
 git push --follow-tags
 ```
 
 `release.yml` stamps `v0.1.0` into all five `package.json` files and
 `packages/gatelane-sdk-py/pyproject.toml`, publishes in dependency order,
-and then verifies that `@latest` resolves to the stamped version for every
+and then verifies that the stamped version is on the registry for every
 package before the run can pass. The same run attaches the five tarballs to
 the GitHub Release, so the release is usable even if the npm job was
 skipped.
+
+> Releases are **tag-driven**. The version in the tag is the version of
+> every package — there is no second versioning system to keep in sync.
+> (Changesets was evaluated and removed: it cannot manage the Python
+> SDK, which shares the same single version policy.)
 
 ### 3.2 PyPI — `gatelane-sdk`
 
@@ -530,7 +591,9 @@ them or the promotion gate loses meaning.
 3. **Single version policy (SVP).** All SDK releases carry the same
    `MAJOR.MINOR` tag. A patch may ship independently, but `1.2.x` for
    the JS SDK and `1.1.x` for the Python SDK at the same time is a
-   bug. Use `changesets` or `monochange` to coordinate.
+   bug. The release workflow enforces this by stamping one tag into
+   every `package.json` and into the Python `pyproject.toml`, so the
+   two SDKs can never drift.
 4. **Immutable, signed artifacts.** Every release artifact has a
    SHA-256 and a signature. Pin by digest, not by tag, in production.
 5. **Documented SDK parity matrix.** Any feature available in the JS
@@ -552,11 +615,12 @@ phase 0  ──  today (already in repo)
    [✓]   Auto-generated codeload tarball on tag
 
 phase 1  ──  release the artifact you already have
-   [ ]   .github/workflows/release.yml builds binaries + Docker
+   [x]   .github/workflows/release.yml builds binaries + Docker
          image, attaches to GitHub Release with SHA256SUMS + sig
-   [ ]   changesets (or monochange) wired in for SVP version bumps
-   [ ]   npm publish workflow gated on the same release
-   [ ]   Docker image pushed to ghcr.io on tag (multi-arch)
+   [x]   single version policy enforced: the release tag is stamped
+         into all five package.json files and the Python pyproject.toml
+   [x]   npm publish workflow gated on the same release
+   [x]   Docker image pushed to ghcr.io on tag (multi-arch)
 
 phase 2  ──  package-manager channels
    [ ]   lanefoundry/homebrew-tap — Formula/gatelane.rb

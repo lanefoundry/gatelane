@@ -38,18 +38,10 @@ class Gatelane < Formula
   def install
     # Pre-built binary layout from packaging/homebrew/binary-layout.
     bin.install "gatelane"
-    (etc/"gatelane").install "config.example.toml"
-  end
-
-  service do
-    run [opt_bin/"gatelane", "serve", "--config", etc/"gatelane/config.toml"]
-    keep_alive true
-    log_path var/"log/gatelane.log"
-    error_log_path var/"log/gatelane.err.log"
   end
 
   test do
-    assert_match "gatelane", shell_output("#{bin}/gatelane --version")
-    assert_match "ok", shell_output("#{bin}/gatelane health --check")
+    # The CLI has no --version flag yet; `--help` is the smoke test.
+    assert_match "promotion gate", shell_output("#{bin}/gatelane --help")
   end
 end

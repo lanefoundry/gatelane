@@ -86,16 +86,23 @@ sudo dnf install ./gatelane-0.1.0-1.x86_64.rpm && gatelane --help
 
 ## GPG signing
 
-`.deb` and `.rpm` are signed in CI via `dpkg-sig` / `rpm --addsign`
-using a `lanefoundry` GPG key stored in the GitHub Actions secret
-`GPG_SIGNING_KEY`. Consumers can verify:
+**Not implemented yet.** The `.deb` and `.rpm` produced by `release.yml`
+are not GPG-signed; only `SHA256SUMS` is signed, with cosign keyless
+signing.
 
 ```bash
-dpkg-sig --verify gatelane_0.1.0_amd64.deb
-rpm --checksig gatelane-0.1.0-1.x86_64.rpm
+# what works today
+cosign verify-blob \
+  --bundle artifacts/final/SHA256SUMS.bundle \
+  --certificate-identity-regexp 'https://github.com/lanefoundry/gatelane/.*' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  artifacts/final/SHA256SUMS
 ```
 
-The public key is published at <https://lanefoundry.dev/.well-known/gpg.pub>.
+Signing the packages themselves requires a `lanefoundry` GPG key in the
+`GPG_SIGNING_KEY` secret plus `dpkg-sig` and `rpm --addsign` steps in
+`release.yml`. Until that lands, do not promise signed packages to
+users.
 
 ## Acceptance criterion
 
@@ -104,6 +111,6 @@ The public key is published at <https://lanefoundry.dev/.well-known/gpg.pub>.
 - [ ] `gatelane --help` prints the usage text after install.
 - [ ] The `.rpm` is a real RPM (`rpm -qpi` succeeds) — the previous
       build produced a `.deb` with an `.rpm` extension.
-- [ ] `.deb` and `.rpm` are signed; `dpkg-sig --verify` and
-      `rpm --checksig` return `GOOD`.
 - [ ] SHA256SUMS contains both packages and does not contain itself.
+- [ ] (future) `.deb` and `.rpm` are signed; `dpkg-sig --verify` and
+      `rpm --checksig` return `GOOD`.

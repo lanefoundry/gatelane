@@ -290,7 +290,19 @@ pnpm lint             # run ESLint (flat config + typescript-eslint)
 pnpm test             # run tests (vitest)
 pnpm format:check     # check Prettier formatting
 pnpm format           # auto-format with Prettier
+pnpm pack:all         # pack the five publishable packages into artifacts/npm
+pnpm verify:pack      # install those tarballs into a throwaway project and use them
 ```
+
+### Release tooling
+
+| Tool | What it does |
+|---|---|
+| `tools/pack-all.mjs` | Packs the five publishable packages. `pnpm pack` rewrites `workspace:*` to concrete versions, so the tarballs behave like published packages. |
+| `tools/verify-pack.mjs` | Installs the tarballs into an empty project, imports the SDK and runs the CLI. CI runs this on every push, so an empty or unresolvable package cannot ship. |
+| `tools/resolve-workspace-deps.mjs` | Rewrites `workspace:*` ranges to concrete versions. `npm publish` does **not** do this the way `pnpm publish` does, and the release workflow uses `npm publish` so it can use npm's OIDC trusted publishing. Run it only in a publish context. |
+| `tools/npm-dist-tags.mjs` | Applies the dist-tag policy: `canary` points at the fresh build, `latest` at the newest stable release. |
+| `tools/prune-canary.mjs` | Unpublishes old canary versions. npm only allows unpublishing within 72 hours of a publish, so this is best-effort. |
 
 ### Worker API endpoints
 

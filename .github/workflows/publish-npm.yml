@@ -18,6 +18,9 @@ concurrency:
 
 permissions:
   contents: read
+  # Required for npm's OIDC trusted publishing. The npm CLI exchanges
+  # this short-lived token for a publish token; no long-lived npm
+  # credential is involved.
   id-token: write
 
 env:
@@ -42,7 +45,7 @@ jobs:
     steps:
       - name: Warn
         run: |
-          echo "::warning title=npm canary disabled::ENABLE_NPM_CANARY is not 'true' and this run was not dispatched with publish=true, so no package was published. Set the repository variable ENABLE_NPM_CANARY=true (and the NPM_TOKEN secret) to enable canary publishing."
+          echo "::warning title=npm canary disabled::ENABLE_NPM_CANARY is not 'true' and this run was not dispatched with publish=true, so no package was published. Set the repository variable ENABLE_NPM_CANARY=true to enable canary publishing."
 
   publish-canary:
     name: Publish canary
@@ -54,16 +57,40 @@ jobs:
       name: npm-canary
       url: https://www.npmjs.com/
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
           version: 10
 
-      - uses: actions/setup-node@v4
+      # Node 24 is required: npm's OIDC trusted publishing needs npm
+      # >= 11.5.1 and Node >= 22.14.0, and `npm dist-tag` over OIDC
+      # needs npm >= 11.21.0.
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: 22
-          registry-url: https://registry.npmjs.org/
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org/'
+          # Never cache in a release build.
+          package-manager-cache: false
+
+      - name: Use an npm that supports OIDC
+        run: npm install -g npm@^11.21.0
+
+      # Fallback credentials for the window before the trusted publisher
+      # is configured. Once it is set up, npm prefers the OIDC identity
+      # and this secret can be deleted.
+      #
+      # The `secrets` context is not available in a step's `if`, so the
+      # check happens in the shell.
+      - name: Fallback token notice
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -n "${NODE_AUTH_TOKEN}" ]; then
+            echo "::notice::NPM_TOKEN is set; npm will use it unless an OIDC trusted publisher is configured."
+          else
+            echo "::notice::No NPM_TOKEN configured; publishing relies on the OIDC trusted publisher."
+          fi
 
       - run: pnpm install --frozen-lockfile
 
@@ -81,6 +108,13 @@ jobs:
           for pkg in $NPM_PACKAGE_DIRS; do
             node -e "const p=require('./${pkg}/package.json');p.version='${VERSION}';require('fs').writeFileSync('./${pkg}/package.json',JSON.stringify(p,null,2)+'\n');"
           done
+
+      # `npm publish` publishes the manifest verbatim — it does not
+      # rewrite `workspace:*` the way `pnpm publish` does. Resolve the
+      # workspace ranges ourselves so the published manifest points at
+      # real versions.
+      - name: Resolve workspace dependencies
+        run: node tools/resolve-workspace-deps.mjs
 
       - name: Publish packages
         env:
@@ -105,7 +139,7 @@ jobs:
             # The npm registry returns 503 under load, which would
             # otherwise abort the whole release on a transient failure.
             attempt=1
-            until (cd "$pkg" && pnpm publish --tag canary --access public --provenance --no-git-checks); do
+            until (cd "$pkg" && npm publish --access public --tag canary --provenance); do
               if [ "$attempt" -ge 5 ]; then
                 echo "::error::failed to publish ${name}@${VERSION} after ${attempt} attempts"
                 exit 1
@@ -120,7 +154,12 @@ jobs:
       # npm sets `latest` on the first publish of a package no matter which
       # tag was requested. Apply the tags explicitly so that
       # `npm i @lanefoundry/gatelane-sdk` resolves to something usable.
+      #
+      # This needs the "Allow npm dist-tag" option on the trusted
+      # publisher, so a failure here is reported but does not fail the
+      # release — the packages themselves are already published.
       - name: Apply dist-tags
+        continue-on-error: true
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
@@ -129,13 +168,14 @@ jobs:
           VERSION="0.0.0-canary-${SHA}"
           for pkg in $NPM_PACKAGE_DIRS; do
             name="$(node -p "require('./${pkg}/package.json').name")"
-            node tools/npm-dist-tags.mjs "$name" "$VERSION" canary
+            node tools/npm-dist-tags.mjs "$name" "$VERSION" canary \
+              || echo "::warning::could not manage the dist-tags of ${name}; enable 'Allow npm dist-tag' on the trusted publisher"
           done
 
       # The registry answers a fresh publish with "Your package is being
       # processed and may take a few minutes to become available", so the
-      # tag is not readable immediately. Poll instead of failing on the
-      # first 404.
+      # version is not readable immediately. Poll instead of failing on
+      # the first 404.
       - name: Verify the packages are actually on the registry
         run: |
           set -euo pipefail
@@ -149,14 +189,51 @@ jobs:
             @lanefoundry/gatelane-ci-adapter; do
             published=""
             for attempt in $(seq 1 24); do
-              published="$(npm view "${name}@canary" version 2>/dev/null || true)"
+              published="$(npm view "${name}@${VERSION}" version 2>/dev/null || true)"
               [ "$published" = "$VERSION" ] && break
-              echo "attempt ${attempt}: ${name}@canary is '${published}', waiting for the registry"
+              echo "attempt ${attempt}: ${name}@${VERSION} is '${published}', waiting for the registry"
               sleep 15
             done
-            echo "${name}@canary -> ${published}"
+            echo "${name}@${VERSION} -> ${published}"
             if [ "$published" != "$VERSION" ]; then
-              echo "::error::${name}@canary is ${published}, expected ${VERSION}"
+              echo "::error::${name}@${VERSION} is ${published}, expected ${VERSION}"
               exit 1
             fi
+            echo "${name} dist-tags: $(npm view "${name}" dist-tags --json 2>/dev/null || echo '{}')"
           done
+
+  # Every push to main publishes an immutable canary version to five
+  # packages, so the version list grows without bound. npm only allows
+  # unpublishing within 72 hours of a publish, so this is a best-effort
+  # cleanup of the recent ones.
+  #
+  # Unpublishing is not available over OIDC, so this job needs the
+  # fallback token and is skipped when there is none.
+  prune-canary:
+    name: Prune old canary versions
+    if: vars.ENABLE_NPM_CANARY == 'true' || inputs.publish
+    needs: publish-canary
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org/'
+          package-manager-cache: false
+
+      - name: Use an npm that supports OIDC
+        run: npm install -g npm@^11.21.0
+
+      - name: Prune
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "${NODE_AUTH_TOKEN}" ]; then
+            echo "::notice::No NPM_TOKEN configured; skipping the canary cleanup. npm does not expose 'npm unpublish' over trusted publishing."
+            exit 0
+          fi
+          node tools/prune-canary.mjs --keep 5

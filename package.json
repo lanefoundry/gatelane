@@ -4,6 +4,9 @@
   "private": true,
   "description": "Pre-production safety + eval gate for AI agents",
   "license": "Apache-2.0",
+  "engines": {
+    "node": ">=22"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/lanefoundry/gatelane.git"
@@ -22,10 +25,6 @@
     "deploy": "pnpm --filter @lanefoundry/gatelane-worker deploy",
     "secrets:status": "pnpm --filter @lanefoundry/gatelane-worker exec wrangler secret list",
     "secrets:setup": "pnpm --filter @lanefoundry/gatelane-worker exec wrangler secret bulk .env",
-    "changeset": "changeset",
-    "changeset:version": "changeset version",
-    "changeset:publish": "pnpm publish -r --provenance --no-git-checks",
-    "release:dry-run": "changeset status --since=main",
     "pack:all": "node tools/pack-all.mjs",
     "verify:pack": "node tools/verify-pack.mjs"
   },
