@@ -353,6 +353,9 @@ jobs:
           echo "every file in SHA256SUMS is attached to the release"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # This job does not check out the repository, so `gh` cannot
+          # work the target repository out from the git remote.
+          GH_REPO: ${{ github.repository }}
 
   # ----------------------------------------------------------------------
   # 4. Publish to npm (trusted publishing via OIDC)
