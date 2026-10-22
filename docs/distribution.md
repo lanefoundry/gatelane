@@ -95,6 +95,15 @@ All five share one version (single version policy). The current stable
 release is **0.1.0**; `latest` points at it and `canary` at the newest
 build from `main`.
 
+> **`0.0.0-stage` in the version list.** Each package also carries a
+> `0.0.0-stage` version. Those are name-reservation placeholders that
+> were published by hand before the packages existed, so that nothing
+> else could claim the names. They are empty shells — a `package.json`
+> and a README — and no dist-tag points at them, so a normal install
+> never resolves to one. They can be removed from a logged-in session
+> with `node tools/prune-canary.mjs`; npm does not allow the CI token
+> to unpublish.
+
 **Where**
 
 - Public registry: `https://registry.npmjs.org/`

@@ -22,7 +22,7 @@ gatelane 是 [lanefoundry](https://github.com/lanefoundry) *-lane 家族的第�
 - **gatelane** — 預生產安全與評估閘門
 
 > [!IMPORTANT]
-> gatelane 目前是早期預覽版（`0.0.0-dev`）。5-6 週的 demo 目標，首個 demo 目標是 looplane（內部使用）。請勿部署到生產環境；預計每週都會有破壞性更新。
+> gatelane 目前是早期預覽版（`0.1.0`）。請勿部署到生產環境；預計每週都會有破壞性更新。
 
 ## 為什麼選 gatelane
 
@@ -379,6 +379,7 @@ gatelane/
 
 ## 文件
 
+- [Changelog](CHANGELOG.md) — 每個版本發佈了什麼
 - [Why gatelane](docs/positioning.md) — 基於回測差異升級的切入點
 - [Roadmap](docs/roadmap.md) — 5-6 週 demo 目標、v0.2 和 v1.0 計劃
 - [Strategic record](docs/strategic-record.md) — 為什麼從 Agent Platform 轉向

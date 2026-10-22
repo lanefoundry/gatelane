@@ -22,7 +22,7 @@ gatelane is the third product in the [lanefoundry](https://github.com/lanefoundr
 - **gatelane** — pre-production safety + eval gate
 
 > [!IMPORTANT]
-> gatelane is an early preview (`0.0.0-dev`). 5–6 week demo target, first demo target is looplane (in-house). Do not deploy in production; expect breaking changes weekly.
+> gatelane is an early preview (`0.1.0`). Do not deploy in production; expect breaking changes weekly.
 
 ## Why gatelane
 
@@ -396,6 +396,7 @@ gatelane/
 
 ## Documentation
 
+- [Changelog](CHANGELOG.md) — what shipped in each release
 - [Why gatelane](docs/positioning.md) — the promotion-on-backtest-delta wedge
 - [Roadmap](docs/roadmap.md) — 5–6 week demo target, v0.2 and v1.0 plans
 - [Strategic record](docs/strategic-record.md) — why we pivoted from Agent Platform
