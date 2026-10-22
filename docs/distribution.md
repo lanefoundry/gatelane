@@ -307,10 +307,16 @@ gh workflow run "Publish npm (canary)" -f publish=true
 npm view @lanefoundry/gatelane-sdk@canary version
 ```
 
-Consumers install `@canary` until a stable release exists. Old canary
-versions are pruned by the `prune-canary` job — npm only allows
-unpublishing within 72 hours of a publish, so this is a best-effort
-cleanup of recent versions.
+Consumers install `@canary` until a stable release exists.
+
+Old canary versions accumulate: every push to `main` publishes five
+immutable versions. npm's policy makes automated cleanup impossible —
+`npm unpublish` is rejected for a token that bypasses two-factor
+authentication, and trusted publishing does not expose unpublish at
+all. The `prune-canary` job therefore reports what it would remove and
+moves on; run `npm login && node tools/prune-canary.mjs` from a
+logged-in session if the version list needs tidying. Consumers follow
+the `canary` dist-tag, so the extra versions are cosmetic.
 
 Stable:
 

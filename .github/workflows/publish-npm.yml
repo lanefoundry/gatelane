@@ -236,4 +236,7 @@ jobs:
             echo "::notice::No NPM_TOKEN configured; skipping the canary cleanup. npm does not expose 'npm unpublish' over trusted publishing."
             exit 0
           fi
-          node tools/prune-canary.mjs --keep 5
+          # npm refuses `npm unpublish` for a token that bypasses two-factor
+          # authentication, so this usually has nothing to do from CI. It
+          # must not fail the release either way.
+          node tools/prune-canary.mjs --keep 5 || echo "::warning::the canary cleanup did not complete"

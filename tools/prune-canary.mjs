@@ -62,13 +62,24 @@ const packages = args.length
 const npm = process.platform === "win32" ? "npm.cmd" : "npm";
 
 function npmView(spec, field) {
+  let raw;
   try {
-    return execFileSync(npm, ["view", spec, field, "--json"], {
+    raw = execFileSync(npm, ["view", spec, field, "--json"], {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
     }).trim();
   } catch {
     return "";
+  }
+  if (!raw) return "";
+  // `npm view <pkg> version --json` prints a quoted JSON string, so the
+  // raw output is not the value.
+  try {
+    const parsed = JSON.parse(raw);
+    if (typeof parsed === "string") return parsed;
+    return raw;
+  } catch {
+    return raw;
   }
 }
 
@@ -92,6 +103,17 @@ function publishTimes(name) {
 const now = Date.now();
 let removed = 0;
 let failed = 0;
+let blocked = false;
+
+/**
+ * npm refuses `npm unpublish` for a granular access token that bypasses
+ * two-factor authentication, and trusted publishing does not expose
+ * unpublish at all. So the cleanup cannot run unattended from CI with
+ * the token this repository uses.
+ */
+function isTwoFactorBlock(message) {
+  return /bypass two-factor|EOTP|one-time pass/i.test(message ?? "");
+}
 
 for (const name of packages) {
   const raw = npmView(name, "versions");
@@ -142,6 +164,10 @@ for (const name of packages) {
       console.log(`  - ${name}@${version}: ${Math.round(ageHours)}h old, npm will not unpublish it`);
       continue;
     }
+    if (blocked) {
+      console.log(`  - ${name}@${version}: skipped`);
+      continue;
+    }
     if (dryRun) {
       console.log(`  → would unpublish ${name}@${version}`);
       removed++;
@@ -149,14 +175,45 @@ for (const name of packages) {
     }
     try {
       execFileSync(npm, ["unpublish", `${name}@${version}`], { stdio: "inherit" });
-      console.log(`  ✓ unpublished ${name}@${version}`);
-      removed++;
-    } catch {
+    } catch (error) {
+      const message = `${error.stdout ?? ""}${error.stderr ?? ""}${error.message ?? ""}`;
+      if (isTwoFactorBlock(message)) {
+        blocked = true;
+        console.log(
+          "  ! npm refused the unpublish: a token that bypasses two-factor" +
+            " authentication may not perform this action.",
+        );
+        console.log(
+          "    Cleanup from CI is not possible with this token. Run it from a" +
+            " logged-in session instead: npm login && node tools/prune-canary.mjs",
+        );
+        break;
+      }
       console.log(`  ! could not unpublish ${name}@${version}`);
       failed++;
+      continue;
     }
+
+    // npm 11 exits 0 and prints the success line even when the registry
+    // answers 404, so the exit code cannot be trusted. Ask the registry
+    // whether the version is really gone.
+    if (npmView(`${name}@${version}`, "version") === version) {
+      console.log(`  ! npm reported success but ${name}@${version} is still there`);
+      failed++;
+      continue;
+    }
+    console.log(`  ✓ unpublished ${name}@${version}`);
+    removed++;
   }
 }
 
 console.log(`\nUnpublished ${removed} version(s), ${failed} problem(s).`);
-if (failed > 0) process.exitCode = 1;
+if (blocked) {
+  console.log(
+    "Cleanup was blocked by npm's two-factor policy. The versions stay on the" +
+      " registry; only the dist-tag matters for consumers.",
+  );
+  process.exitCode = 0;
+} else if (failed > 0) {
+  process.exitCode = 1;
+}
