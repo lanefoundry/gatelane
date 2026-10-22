@@ -218,16 +218,31 @@ One-time prerequisites:
 
    These two variables are independent on purpose:
 
-   | Variable | Effect when unset |
+   | Variable | Effect |
    |---|---|
-   | `ENABLE_NPM_CANARY` | `publish-npm.yml` shows a **skipped** job with a warning annotation; no npm publish happens |
-   | `ENABLE_NPM_PUBLISH` | `release.yml`'s npm job is skipped; the GitHub Release, tarballs, binaries and Docker image are still produced |
+   | `ENABLE_NPM_CANARY` | Unset → `publish-npm.yml` shows a **skipped** job with a warning annotation, so no canary is published. Set to `true` to publish a canary on every push to `main`. |
+   | `ENABLE_NPM_PUBLISH` | Unset → a stable tag **does** publish to npm. Set it to `false` to skip the npm job of `release.yml`; the GitHub Release, tarballs, binaries and Docker image are still produced. |
+   | `ENABLE_PYPI_PUBLISH` | Unset → the PyPI job is skipped (PyPI trusted publishing is not configured yet). |
 
-   So a tag can be pushed **before** the npm org exists, and consumers
+   So a tag can be pushed **before** the npm org exists — set
+   `ENABLE_NPM_PUBLISH=false` for that one release — and consumers
    install from the GitHub Release tarballs.
 
 4. **Switch to OIDC trusted publishing** (recommended — and the reason
    `NPM_TOKEN` can be deleted afterwards).
+
+   The setup is scripted:
+
+   ```bash
+   npm install -g npm@^11.21.0
+   npm login          # 2FA must be enabled on the account
+   bash tools/setup-trusted-publishers.sh
+   ```
+
+   The script creates the two configurations per package (one per
+   workflow file and environment) and sleeps between calls so they stay
+   inside npm's rate limit. Check the result with
+   `npm trust list @lanefoundry/gatelane-sdk`.
 
    npm's long-lived tokens are the weak link: they can leak through logs
    and need manual rotation. Trusted publishing replaces them with a

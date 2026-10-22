@@ -324,10 +324,11 @@ jobs:
   npm:
     name: Publish to npm
     needs: build
-    # Skipped (visible in the UI) until the npm org, token and variable
-    # exist. Packaging and GitHub Release assets do not depend on this, so
-    # tagging still produces installable tarballs without npm credentials.
-    if: vars.ENABLE_NPM_PUBLISH == 'true'
+    # A stable tag publishes to npm by default. Set the repository variable
+    # ENABLE_NPM_PUBLISH to "false" to skip it (useful while the npm org
+    # or the token is still being set up). The GitHub Release, tarballs,
+    # binaries and Docker image are produced either way.
+    if: vars.ENABLE_NPM_PUBLISH != 'false'
     runs-on: ubuntu-latest
     permissions:
       contents: read
