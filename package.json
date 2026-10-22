@@ -4,6 +4,11 @@
   "private": true,
   "description": "Pre-production safety + eval gate for AI agents",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lanefoundry/gatelane.git"
+  },
+  "homepage": "https://github.com/lanefoundry/gatelane",
   "scripts": {
     "dev": "pnpm --filter @lanefoundry/gatelane-worker dev",
     "build": "pnpm -r build",

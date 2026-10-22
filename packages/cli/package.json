@@ -3,6 +3,12 @@
   "version": "0.0.1-dev",
   "description": "CLI for the gatelane promotion gate.",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lanefoundry/gatelane.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://github.com/lanefoundry/gatelane/tree/main/packages/cli",
   "type": "module",
   "bin": {
     "gatelane": "./dist/cli.js"
