@@ -387,6 +387,26 @@ jobs:
             echo "::endgroup::"
           done
 
+      - name: Apply dist-tags
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.value }}"
+          for pkg in \
+            packages/gatelane-sdk \
+            packages/gatelane-engine \
+            packages/source-prod-slice \
+            packages/cli \
+            packages/ci-adapter; do
+            name="$(node -p "require('./${pkg}/package.json').name")"
+            node tools/npm-dist-tags.mjs "$name" "$VERSION" latest
+          done
+
+      # The registry answers a fresh publish with "Your package is being
+      # processed and may take a few minutes to become available", so the
+      # tag is not readable immediately. Poll instead of failing on the
+      # first 404.
       - name: Verify the packages are actually on the registry
         run: |
           set -euo pipefail
@@ -397,7 +417,13 @@ jobs:
             @lanefoundry/source-prod-slice \
             @lanefoundry/gatelane-cli \
             @lanefoundry/gatelane-ci-adapter; do
-            published="$(npm view "${name}@latest" version)"
+            published=""
+            for attempt in $(seq 1 24); do
+              published="$(npm view "${name}@latest" version 2>/dev/null || true)"
+              [ "$published" = "$VERSION" ] && break
+              echo "attempt ${attempt}: ${name}@latest is '${published}', waiting for the registry"
+              sleep 15
+            done
             echo "${name}@latest -> ${published}"
             if [ "$published" != "$VERSION" ]; then
               echo "::error::${name}@latest is ${published}, expected ${VERSION}"

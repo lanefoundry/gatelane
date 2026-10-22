@@ -117,6 +117,25 @@ jobs:
             echo "::endgroup::"
           done
 
+      # npm sets `latest` on the first publish of a package no matter which
+      # tag was requested. Apply the tags explicitly so that
+      # `npm i @lanefoundry/gatelane-sdk` resolves to something usable.
+      - name: Apply dist-tags
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          SHA="${GITHUB_SHA::7}"
+          VERSION="0.0.0-canary-${SHA}"
+          for pkg in $NPM_PACKAGE_DIRS; do
+            name="$(node -p "require('./${pkg}/package.json').name")"
+            node tools/npm-dist-tags.mjs "$name" "$VERSION" canary
+          done
+
+      # The registry answers a fresh publish with "Your package is being
+      # processed and may take a few minutes to become available", so the
+      # tag is not readable immediately. Poll instead of failing on the
+      # first 404.
       - name: Verify the packages are actually on the registry
         run: |
           set -euo pipefail
@@ -128,7 +147,13 @@ jobs:
             @lanefoundry/source-prod-slice \
             @lanefoundry/gatelane-cli \
             @lanefoundry/gatelane-ci-adapter; do
-            published="$(npm view "${name}@canary" version)"
+            published=""
+            for attempt in $(seq 1 24); do
+              published="$(npm view "${name}@canary" version 2>/dev/null || true)"
+              [ "$published" = "$VERSION" ] && break
+              echo "attempt ${attempt}: ${name}@canary is '${published}', waiting for the registry"
+              sleep 15
+            done
             echo "${name}@canary -> ${published}"
             if [ "$published" != "$VERSION" ]; then
               echo "::error::${name}@canary is ${published}, expected ${VERSION}"
