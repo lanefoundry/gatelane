@@ -90,8 +90,30 @@ jobs:
           SHA="${GITHUB_SHA::7}"
           VERSION="0.0.0-canary-${SHA}"
           for pkg in $NPM_PACKAGE_DIRS; do
-            echo "::group::publishing ${pkg}@${VERSION}"
-            (cd "$pkg" && pnpm publish --tag canary --access public --provenance --no-git-checks)
+            name="$(node -p "require('./${pkg}/package.json').name")"
+            echo "::group::publishing ${name}@${VERSION}"
+
+            # Skip if this exact version is already on the registry. A
+            # re-run after a transient failure must not die on
+            # "cannot publish over the previously published versions".
+            if [ "$(npm view "${name}@${VERSION}" version 2>/dev/null || true)" = "$VERSION" ]; then
+              echo "${name}@${VERSION} is already published, skipping"
+              echo "::endgroup::"
+              continue
+            fi
+
+            # The npm registry returns 503 under load, which would
+            # otherwise abort the whole release on a transient failure.
+            attempt=1
+            until (cd "$pkg" && pnpm publish --tag canary --access public --provenance --no-git-checks); do
+              if [ "$attempt" -ge 5 ]; then
+                echo "::error::failed to publish ${name}@${VERSION} after ${attempt} attempts"
+                exit 1
+              fi
+              echo "::warning::publishing ${name}@${VERSION} failed, retrying (${attempt}/5)"
+              attempt=$((attempt + 1))
+              sleep $((attempt * 20))
+            done
             echo "::endgroup::"
           done
 
