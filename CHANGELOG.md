@@ -10,6 +10,31 @@ engine, the CLI, the CI adapter and the Python SDK share the same
 `MAJOR.MINOR`. The git tag is the source of truth: the release workflow
 stamps it into every `package.json` and into the Python `pyproject.toml`.
 
+## [0.2.0] — 2026-10-24
+
+### Added
+
+- `gatelane eval` — black-box test a deployed agent's HTTP endpoint from a
+  YAML config (`gatelane.yaml`): test cases with `contains`,
+  `not-contains`, `llm-rubric`, `latency`, `status` and `json-path`
+  assertions, a red-team replay of the attack library against the
+  endpoint, and blue-team checks on blocked responses, leaks and false
+  positives. Config values may reference `${ENV}` vars; `.env` is loaded.
+  Runs are saved to `.gatelane/runs/<tag>.json`.
+- `gatelane compare` — diff two eval runs; exits non-zero on a regressed
+  test or a newly bypassed attack, so it can gate CI.
+- `gatelane init` — write a starter `gatelane.yaml`.
+- `@lanefoundry/gatelane-engine` exports `./eval`, `./eval-config` and
+  `./http-attacks`.
+
+### Fixed
+
+- The HTTP attack library (direct and indirect injection, chain attacks,
+  context window flood, memory poisoning, tool abuse; 56 vectors) that the
+  0.1.0 notes below describe was deleted along with `mode-red-team` before
+  the release, so 0.1.0 shipped only the 20 hand-curated `scan` payloads.
+  It is back in the engine and is what `eval` replays.
+
 ## [0.1.0] — 2026-10-22
 
 First release. Early preview — the interfaces are not stable yet.

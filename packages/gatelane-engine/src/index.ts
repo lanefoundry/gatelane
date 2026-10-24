@@ -16,4 +16,6 @@ export * from './audit.js';
 export * from './tracing.js';
 export * from './runner.js';
 export * from './attack.js';
-export * from './scan.js';
+export * from './scan.js';export * from './eval-config.js';
+export * from './eval.js';
+export * from './http-attacks/index.js';
