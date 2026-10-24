@@ -48,8 +48,11 @@ gatelane 提供這個原語。
 |---|---|
 | `gatelane gate` | 升級閘門 — 對資料集重播 candidate、judge 評分、與 baseline 比較並簽署報告 |
 | `gatelane freeze-slice` | 將一段時間（`7d`、`24h`、`30d`）的生產捕獲流量凍結為資料集檔案 |
+| `gatelane eval` | 依 YAML 設定直接打已部署 agent 的 HTTP endpoint：測試案例、紅隊、藍隊 |
+| `gatelane compare` | 比較兩次 `eval` 結果；有測試退步或新被攻破的攻擊時回傳非 0 |
+| `gatelane init` | 產生 `gatelane.yaml` 範本 |
 
-`gate --dataset-source scan` 會重播內建攻擊庫；`prod` 則重播凍結的生產切片。完整參數請執行 `gatelane --help`。獨立的 `scan` / `eval` / `run` / `snapshot` / `init` 指令為規劃中，尚未實作，見 [路線圖](docs/roadmap.md)。
+`gate --dataset-source scan` 會重播內建攻擊庫；`prod` 則重播凍結的生產切片。完整參數請執行 `gatelane --help`。獨立的 `scan` / `run` / `snapshot` 指令為規劃中，尚未實作，見 [路線圖](docs/roadmap.md)。
 
 攻擊庫包含 50+ 個 prompt injection 向量，涵蓋直接 prompt injection、透過工具的間接 injection、連鎖攻擊、上下文視窗洪泛、記憶體投毒和工具濫用。整合 [garak](https://github.com/NVIDIA/garak)（NVIDIA）、[PyRIT](https://github.com/Azure/PyRIT)（Microsoft）和 [Promptfoo](https://github.com/promptfoo/promptfoo)（OpenAI）。
 
@@ -221,6 +224,22 @@ npx gatelane gate --candidate model:gpt-5 --judges gpt-4o --dataset-source scan
 npx gatelane gate --candidate model:gpt-5 --judges gpt-4o \
   --provider openai --judge-provider openai --dataset dataset.jsonl
 ```
+
+### 測試已部署的 agent（eval）
+
+`gatelane eval` 直接呼叫 agent 的 HTTP endpoint，不需要接 SDK。設定檔格式見英文版 README 的範例，或執行 `gatelane init` 產生範本。
+
+```bash
+npx @lanefoundry/gatelane-cli eval --tag baseline
+npx @lanefoundry/gatelane-cli eval --tag my-change
+npx @lanefoundry/gatelane-cli compare --baseline baseline --candidate my-change
+```
+
+- 結果存在 `.gatelane/runs/<tag>.json`。
+- 設定值可用 `${NAME}` 讀環境變數，會先載入目前目錄的 `.env`。
+- `contains` / `not-contains` 區分大小寫。
+- endpoint 回 4xx/5xx 視為擋下攻擊；回 2xx 時交給 judge 判斷 agent 有沒有照做。
+- `provider: mock` 時 `llm-rubric` 不會真的評分，紅隊改用關鍵字判斷。
 
 ## 部署到 Cloudflare
 

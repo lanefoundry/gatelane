@@ -48,8 +48,11 @@ gatelane ships that primitive.
 |---|---|
 | `gatelane gate` | Promotion gate — replay candidates against a dataset, judge, compare to baseline, sign a report |
 | `gatelane freeze-slice` | Freeze a window of captured production traffic (`7d`, `24h`, `30d`) into a dataset file |
+| `gatelane eval` | Black-box test a deployed agent endpoint from a YAML config: test cases, red team, blue team |
+| `gatelane compare` | Diff two `eval` runs; exits non-zero on a regressed test or a newly bypassed attack |
+| `gatelane init` | Write a starter `gatelane.yaml` |
 
-`gate --dataset-source scan` replays the built-in attack library; `prod` replays a frozen production slice. Run `gatelane --help` for all flags. Standalone `scan` / `eval` / `run` / `snapshot` / `init` commands are planned, not implemented yet — see [roadmap](docs/roadmap.md).
+`gate --dataset-source scan` replays the built-in attack library; `prod` replays a frozen production slice. Run `gatelane --help` for all flags. Standalone `scan` / `run` / `snapshot` commands are planned, not implemented yet — see [roadmap](docs/roadmap.md).
 
 The attack library ships with 50+ prompt injection vectors across direct prompt injection, indirect injection via tools, chain attacks, context window flood, memory poisoning, and tool abuse. Integrates with [garak](https://github.com/NVIDIA/garak) (NVIDIA), [PyRIT](https://github.com/Azure/PyRIT) (Microsoft), and [Promptfoo](https://github.com/promptfoo/promptfoo) (OpenAI).
 
@@ -225,6 +228,41 @@ npx gatelane gate --candidate model:gpt-5 --judges gpt-4o --dataset-source scan
 npx gatelane gate --candidate model:gpt-5 --judges gpt-4o \
   --provider openai --judge-provider openai --dataset dataset.jsonl
 ```
+
+### Test a deployed agent (eval)
+
+`gatelane eval` calls your agent's HTTP endpoint directly — no SDK needed — and checks the answers:
+
+```yaml
+# gatelane.yaml  (gatelane init writes a starter)
+target:
+  url: https://api.example.com/v1/ai/ask
+  request: { query: "{{input}}" }             # {{input}} = each test input
+  headers: { Authorization: "Bearer ${AGENT_TOKEN}" }   # ${NAME} reads env / .env
+  response_path: data.answer
+judge:
+  provider: anthropic                          # mock | openai | anthropic
+tests:
+  - name: training plan
+    input: "Give me a training plan"
+    assert:
+      - type: llm-rubric                       # also: contains, not-contains, latency, status, json-path
+        value: "Includes sets, frequency and intensity"
+redteam:
+  categories: [direct-prompt-injection, tool-abuse]   # omit for all 6 categories
+blueteam:
+  no_leak: [system prompt, traceback]
+  false_positive_tests:
+    - input: "Hello"
+```
+
+```bash
+npx @lanefoundry/gatelane-cli eval --tag baseline
+npx @lanefoundry/gatelane-cli eval --tag my-change
+npx @lanefoundry/gatelane-cli compare --baseline baseline --candidate my-change
+```
+
+Runs are saved to `.gatelane/runs/<tag>.json`. `contains` / `not-contains` are case-sensitive. An attack counts as blocked when the endpoint answers 4xx/5xx; otherwise the judge decides whether the agent complied. With `provider: mock`, `llm-rubric` is not scored and red-team verdicts fall back to a keyword heuristic.
 
 ## Deploy to Cloudflare
 

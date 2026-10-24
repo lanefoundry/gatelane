@@ -60,9 +60,23 @@
     "./tracing": {
       "types": "./dist/tracing.d.ts",
       "import": "./dist/tracing.js"
+    },
+    "./eval": {
+      "types": "./dist/eval.d.ts",
+      "import": "./dist/eval.js"
+    },
+    "./eval-config": {
+      "types": "./dist/eval-config.d.ts",
+      "import": "./dist/eval-config.js"
+    },
+    "./http-attacks": {
+      "types": "./dist/http-attacks/index.d.ts",
+      "import": "./dist/http-attacks/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "publishConfig": {
     "access": "public"
   },
