@@ -10,7 +10,7 @@ engine, the CLI, the CI adapter and the Python SDK share the same
 `MAJOR.MINOR`. The git tag is the source of truth: the release workflow
 stamps it into every `package.json` and into the Python `pyproject.toml`.
 
-## [Unreleased]
+## [0.2.0] — 2026-10-24
 
 ### Added
 
